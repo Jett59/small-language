@@ -5,15 +5,12 @@
 
 namespace sl {
 enum class TokenType {
-  // Meta-tokens
   END,
   ERROR,
-  // Literals
   IDENTIFIER,
   INTEGER,
   FLOAT,
   STRING,
-  // Keywords
   LET,
   MUT,
   FN,
@@ -22,7 +19,6 @@ enum class TokenType {
   WHILE,
   FOR,
   RETURN,
-  // Operators
   EQUALS,
   PLUS,
   MINUS,
