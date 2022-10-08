@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include "token.h"
 #include <optional>
 
 namespace sl {
@@ -56,7 +57,7 @@ static std::optional<Token> getNumber(Lexer &lexer) {
     lexer.unreadCharacter();
     return std::nullopt;
   }
-    result += c;
+  result += c;
   do {
     c = lexer.readCharacter();
     result += c;
@@ -110,7 +111,37 @@ std::optional<Token> singleCharacterTokenGetter(Lexer &lexer) {
   return Token{.type = tokenType, .value = std::string(1, c)};
 }
 
+// Helper struct to allow passing literal strings to template parameters.
+template <size_t size> struct StringLiteral {
+  char value[size];
+  constexpr StringLiteral(const char (&literal)[size]) {
+    std::copy_n(literal, size, value);
+  }
+
+  constexpr char operator[](size_t i) const {
+    return value[i];
+  }
+};
+
+template <TokenType tokenType, StringLiteral string>
+std::optional<Token> keywordTokenGetter(Lexer &lexer) {
+  for (int i = 0; string[i] != '\0'; i++) {
+    char read = lexer.readCharacter();
+    if (read != string[i]) {
+      return std::nullopt;
+    }
+  }
+  return Token{.type = tokenType, .value = std::string(string.value)};
+}
+
 TokenGetter tokenGetters[] = {
+    keywordTokenGetter<TokenType::LET, "let">,
+    keywordTokenGetter<TokenType::MUT, "mut">,
+    keywordTokenGetter<TokenType::FN, "fn">,
+    keywordTokenGetter<TokenType::IF, "if">,
+    keywordTokenGetter<TokenType::ELSE, "else">,
+    keywordTokenGetter<TokenType::WHILE, "while">,
+    keywordTokenGetter<TokenType::FOR, "for">,
     getIdentifier,
     getNumber,
     getString,
