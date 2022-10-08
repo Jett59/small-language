@@ -73,6 +73,10 @@ Token Lexer::nextToken() {
     }
     bufferIndex = startBufferIndex;
   }
-  return Token{.type = TokenType::ERROR, .value = std::string(1, c)};
+  if (input.eof()) {
+    return Token{.type = TokenType::END};
+  }else {
+    return Token{.type = TokenType::ERROR, .value = std::string(1, c)};
+  }
 }
 } // namespace sl
