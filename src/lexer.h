@@ -2,6 +2,7 @@
 #define SL_LEXER_H
 
 #include "token.h"
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 

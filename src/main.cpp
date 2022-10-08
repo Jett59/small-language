@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include "parser.h"
 #include <fstream>
 #include <iostream>
 
@@ -55,9 +56,13 @@ int main(int argc, char **argv) {
   } else if (!options.file.empty()) {
     std::ifstream input(options.file);
     Lexer lexer(options.file, input);
-    auto firstToken = lexer.nextToken();
-    std::cout << static_cast<int>(firstToken.type) << " " << firstToken.value
-              << std::endl;
+    Parser parser(lexer);
+    try {
+    parser.parse();
+    }catch (std::exception &e) {
+      std::cerr << e.what() << std::endl;
+      exit(1);
+    }
   } else {
     usage(argv[0]);
   }

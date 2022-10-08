@@ -60,8 +60,7 @@ parserRule(NonTerminal type, std::vector<SymbolType> symbols,
 template <NonTerminal type, typename NodeClass, int... symbolIndices>
 std::unique_ptr<AstNode> simpleReducer(std::vector<ParserSymbol> &symbols) {
   return std::make_unique<NodeClass>(std::move(
-      std::get<std::unique_ptr<AstNode>>(symbols[symbolIndices].value)));
-  return node;
+      std::get<std::unique_ptr<AstNode>>(symbols[symbolIndices].value))...);
 }
 
 static ParserRule parserRules[] = {parserRule(
@@ -83,7 +82,7 @@ struct RuleMatch {
 std::unique_ptr<AstNode> Parser::parse() {
   std::vector<ParserSymbol> stack;
   Token lookahead = lexer.nextToken();
-  while (stack.size() != 1 &&
+  while (stack.size() < 1 ||
          stack[0].type != SymbolType{NonTerminal::COMPILATION_UNIT}) {
     std::vector<RuleMatch> matches;
     for (auto &rule : parserRules) {
@@ -133,5 +132,4 @@ std::unique_ptr<AstNode> Parser::parse() {
   }
   return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
 }
-
 } // namespace sl
