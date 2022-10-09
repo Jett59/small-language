@@ -117,7 +117,8 @@ static ParserRule parserRules[] = {
     parserRule(NonTerminal::DEFINITIONS, {NonTerminal::DEFINITION},
                Precedence::NONE, Associativity::NONE,
                listReducer<NonTerminal::DEFINITIONS, AstNode, -1, 0>),
-    parserRule(NonTerminal::DEFINITIONS, {NonTerminal::DEFINITIONS, NonTerminal::DEFINITION},
+    parserRule(NonTerminal::DEFINITIONS,
+               {NonTerminal::DEFINITIONS, NonTerminal::DEFINITION},
                Precedence::NONE, Associativity::NONE,
                listReducer<NonTerminal::DEFINITIONS, AstNode, 0, 1>),
     parserRule(NonTerminal::DEFINITION,
@@ -129,6 +130,14 @@ static ParserRule parserRules[] = {
     parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER}, Precedence::NONE,
                Associativity::NONE,
                simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
+                             IndexAndType<0, std::string>>),
+    parserRule(NonTerminal::EXPRESSION, {TokenType::FLOAT}, Precedence::NONE,
+               Associativity::NONE,
+               simpleReducer<NonTerminal::EXPRESSION, FloatLiteralNode,
+                             IndexAndType<0, std::string>>),
+    parserRule(NonTerminal::EXPRESSION, {TokenType::STRING}, Precedence::NONE,
+               Associativity::NONE,
+               simpleReducer<NonTerminal::EXPRESSION, StringLiteralNode,
                              IndexAndType<0, std::string>>)};
 
 struct RuleMatch {
