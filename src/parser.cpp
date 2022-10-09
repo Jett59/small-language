@@ -14,6 +14,7 @@ struct ParserSymbol {
   std::variant<nullptr_t, std::unique_ptr<AstNode>,
                std::vector<std::unique_ptr<AstNode>>, std::string>
       value;
+  int line, column;
 };
 
 enum class Precedence {
@@ -139,6 +140,11 @@ static ParserRule parserRules[] = {
                Associativity::NONE,
                simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
                              IndexAndType<0, std::string>>),
+    parserRule(NonTerminal::EXPRESSION,
+               {TokenType::INTEGER, TokenType::AMPERSAND}, Precedence::NONE,
+               Associativity::NONE,
+               simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
+                             IndexAndType<0, std::string>>),
     parserRule(NonTerminal::EXPRESSION, {TokenType::FLOAT}, Precedence::NONE,
                Associativity::NONE,
                simpleReducer<NonTerminal::EXPRESSION, FloatLiteralNode,
@@ -207,6 +213,62 @@ std::unique_ptr<AstNode> Parser::parse() {
            match.rule.precedence >= dominantMatch->rule.precedence) ||
           match.rule.precedence > dominantMatch->rule.precedence) {
         dominantMatch = &match;
+      } else if (dominantMatch &&
+                 dominantMatch->matchingSymbolCount ==
+                     match.matchingSymbolCount &&
+                 dominantMatch->rule.precedence == match.rule.precedence) {
+        if (match.canReduce && dominantMatch->canReduce) {
+          std::cout << "Reduce/reduce conflict: " << std::endl;
+          printStack(stack);
+          std::cout << "Reduction 1: ";
+          for (auto &symbol : match.rule.symbols) {
+            if (std::holds_alternative<TokenType>(symbol)) {
+              std::cout << tokenTypeToString(std::get<TokenType>(symbol));
+            } else {
+              std::cout << nonTerminalToString(std::get<NonTerminal>(symbol));
+            }
+          }
+          std::cout << " -> " << nonTerminalToString(match.rule.type)
+                    << std::endl;
+          std::cout << "Reduction 2: ";
+          for (auto &symbol : dominantMatch->rule.symbols) {
+            if (std::holds_alternative<TokenType>(symbol)) {
+              std::cout << tokenTypeToString(std::get<TokenType>(symbol));
+            } else {
+              std::cout << nonTerminalToString(std::get<NonTerminal>(symbol));
+            }
+          }
+          std::cout << " -> " << nonTerminalToString(dominantMatch->rule.type)
+                    << std::endl;
+          throw std::logic_error("Ambiguous grammar");
+        } else if (dominantMatch->canReduce != match.canReduce) {
+          std::cout << "Shift/reduce conflict: " << std::endl;
+          printStack(stack);
+          std::cout << "Reduction: ";
+          for (auto &symbol : dominantMatch->rule.symbols) {
+            if (std::holds_alternative<TokenType>(symbol)) {
+              std::cout << tokenTypeToString(std::get<TokenType>(symbol));
+            } else {
+              std::cout << nonTerminalToString(std::get<NonTerminal>(symbol));
+            }
+          }
+          std::cout << " -> " << nonTerminalToString(dominantMatch->rule.type)
+                    << std::endl;
+          std::cout << "Shift: ";
+          std::cout << tokenTypeToString(lookahead.type);
+          std::cout << std::endl;
+          std::cout << "  To match this rule:" << std::endl;
+          std::cout << "  ";
+          for (auto &symbol : match.rule.symbols) {
+            if (std::holds_alternative<TokenType>(symbol)) {
+              std::cout << tokenTypeToString(std::get<TokenType>(symbol));
+            } else {
+              std::cout << nonTerminalToString(std::get<NonTerminal>(symbol));
+            }
+          }
+          std::cout << std::endl;
+          throw std::logic_error("Ambiguous grammar");
+        }
       }
     }
     if (dominantMatch->canReduce) {
@@ -221,7 +283,6 @@ std::unique_ptr<AstNode> Parser::parse() {
       stack.push_back(ParserSymbol{lookahead.type, lookahead.value});
       lookahead = lexer.nextToken();
     }
-    printStack(stack);
   }
   return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
 }
