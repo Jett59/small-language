@@ -179,6 +179,7 @@ Token Lexer::nextToken() {
     auto token = getter(*this);
     if (token) {
       buffer = buffer.substr(bufferIndex);
+      bufferIndex = 0;
       token->line = startLine;
       token->column = startColumn;
       return *token;

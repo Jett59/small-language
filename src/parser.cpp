@@ -1,4 +1,5 @@
 #include "parser.h"
+#include <iostream>
 #include <memory>
 #include <variant>
 #include <vector>
@@ -57,20 +58,52 @@ parserRule(NonTerminal type, std::vector<SymbolType> symbols,
   return {type, symbols, precedence, associativity, reduce};
 }
 
-template <NonTerminal type, typename NodeClass, int... symbolIndices>
-std::unique_ptr<AstNode> simpleReducer(std::vector<ParserSymbol> &symbols) {
-  return std::make_unique<NodeClass>(std::move(
-      std::get<std::unique_ptr<AstNode>>(symbols[symbolIndices].value))...);
+template <int i, typename T = std::unique_ptr<AstNode>> struct IndexAndType {
+  static constexpr int index = i;
+  using Type = T;
+};
+
+void assertThat(bool condition, const std::string &message) {
+  if (!condition) {
+    std::cerr << message << std::endl;
+    std::exit(1);
+  }
 }
 
-static ParserRule parserRules[] = {parserRule(
-    NonTerminal::COMPILATION_UNIT, {NonTerminal::DEFINITIONS}, Precedence::NONE,
-    Associativity::NONE, [](auto &symbols) {
-      return ParserSymbol{NonTerminal::COMPILATION_UNIT,
-                          std::make_unique<CompilationUnitNode>(std::move(
-                              std::get<std::vector<std::unique_ptr<AstNode>>>(
-                                  symbols[0].value)))};
-    })};
+template <NonTerminal type, typename NodeClass, typename... symbolIndices>
+ParserSymbol simpleReducer(std::vector<ParserSymbol> &symbols) {
+  // Assert that the symbols have the expected types.
+  (void)std::initializer_list<int>{
+      (assertThat(
+           std::holds_alternative<typename symbolIndices::Type>(
+               symbols[symbolIndices::index].value),
+           "Expected symbol "s + std::to_string(symbolIndices::index) +
+               " not to be "s +
+               std::to_string(symbols[symbolIndices::index].value.index())),
+       0)...};
+  auto value = std::make_unique<NodeClass>(
+      std::move(std::get<typename symbolIndices::Type>(
+          symbols[symbolIndices::index].value))...);
+  return {type, std::move(value)};
+}
+
+static ParserRule parserRules[] = {
+    parserRule(
+        NonTerminal::COMPILATION_UNIT,
+        {NonTerminal::DEFINITIONS, TokenType::END}, Precedence::NONE,
+        Associativity::NONE,
+        simpleReducer<NonTerminal::COMPILATION_UNIT, CompilationUnitNode,
+                      IndexAndType<0, std::vector<std::unique_ptr<AstNode>>>>),
+    parserRule(NonTerminal::DEFINITION,
+               {TokenType::LET, TokenType::IDENTIFIER, TokenType::EQUALS,
+                NonTerminal::EXPRESSION, TokenType::SEMICOLON},
+               Precedence::NONE, Associativity::NONE,
+               simpleReducer<NonTerminal::DEFINITION, VariableDefinitionNode,
+                             IndexAndType<1, std::string>, IndexAndType<3>>),
+    parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER}, Precedence::NONE,
+               Associativity::NONE,
+               simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
+                             IndexAndType<0, std::string>>)};
 
 struct RuleMatch {
   bool canReduce;
@@ -79,11 +112,26 @@ struct RuleMatch {
   size_t matchingSymbolCount;
 };
 
+static void printStack(std::vector<ParserSymbol> &stack) {
+  for (auto &symbol : stack) {
+    std::cout << " ";
+    if (std::holds_alternative<TokenType>(symbol.type)) {
+      std::cout << tokenTypeToString(std::get<TokenType>(symbol.type));
+    } else {
+      std::cout << nonTerminalToString(std::get<NonTerminal>(symbol.type));
+    }
+  }
+  std::cout << std::endl;
+}
+
 std::unique_ptr<AstNode> Parser::parse() {
   std::vector<ParserSymbol> stack;
   Token lookahead = lexer.nextToken();
   while (stack.size() < 1 ||
          stack[0].type != SymbolType{NonTerminal::COMPILATION_UNIT}) {
+    if (lookahead.type == TokenType::ERROR) {
+      throw std::runtime_error("Error while parsing: "s + lookahead.value);
+    }
     std::vector<RuleMatch> matches;
     for (auto &rule : parserRules) {
       size_t initialStackIndex = stack.size() > rule.symbols.size()
@@ -101,10 +149,8 @@ std::unique_ptr<AstNode> Parser::parse() {
       size_t matchingSymbolCount = symbolIndex;
       if (matchingSymbolCount == rule.symbols.size()) {
         matches.push_back({true, false, rule, matchingSymbolCount});
-      } else if (matchingSymbolCount > 0 || stack.size() == 0) {
-        if (rule.symbols[symbolIndex] == SymbolType{lookahead.type}) {
-          matches.push_back({false, true, rule, matchingSymbolCount});
-        }
+      } else if (rule.symbols[symbolIndex] == SymbolType{lookahead.type}) {
+        matches.push_back({false, true, rule, matchingSymbolCount});
       }
     }
     if (matches.size() == 0) {
@@ -114,7 +160,9 @@ std::unique_ptr<AstNode> Parser::parse() {
     RuleMatch *dominantMatch = nullptr;
     for (auto &match : matches) {
       if (!dominantMatch ||
-          match.matchingSymbolCount > dominantMatch->matchingSymbolCount) {
+          (match.matchingSymbolCount > dominantMatch->matchingSymbolCount &&
+           match.rule.precedence >= dominantMatch->rule.precedence) ||
+          match.rule.precedence > dominantMatch->rule.precedence) {
         dominantMatch = &match;
       }
     }
@@ -124,11 +172,13 @@ std::unique_ptr<AstNode> Parser::parse() {
         symbols.push_back(std::move(stack.back()));
         stack.pop_back();
       }
+      std::reverse(symbols.begin(), symbols.end());
       stack.push_back(dominantMatch->rule.reduce(symbols));
     } else if (dominantMatch->shouldShift) {
       stack.push_back(ParserSymbol{lookahead.type, lookahead.value});
       lookahead = lexer.nextToken();
     }
+    printStack(stack);
   }
   return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
 }
