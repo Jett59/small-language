@@ -19,6 +19,11 @@ struct ParserSymbol {
 
 enum class Precedence {
   NONE,
+  // For things like the STATEMENT_LIST which require precedence to specify that
+  // the list initializer should not be used if appending is an option.
+  LIST_INITIALIZE,
+  LIST_APPEND,
+  // Operators
   ASSIGNMENT,
   LOGICAL,
   COMPARISON,
@@ -111,37 +116,32 @@ ParserSymbol listReducer(std::vector<ParserSymbol> &symbols) {
 static ParserRule parserRules[] = {
     parserRule(
         NonTerminal::COMPILATION_UNIT,
-        {NonTerminal::DEFINITIONS, TokenType::END}, Precedence::NONE,
+        {NonTerminal::STATEMENT_LIST, TokenType::END}, Precedence::NONE,
         Associativity::NONE,
         simpleReducer<NonTerminal::COMPILATION_UNIT, CompilationUnitNode,
                       IndexAndType<0, std::vector<std::unique_ptr<AstNode>>>>),
-    parserRule(NonTerminal::DEFINITIONS, {NonTerminal::DEFINITION},
-               Precedence::NONE, Associativity::NONE,
-               listReducer<NonTerminal::DEFINITIONS, AstNode, -1, 0>),
-    parserRule(NonTerminal::DEFINITIONS,
-               {NonTerminal::DEFINITIONS, NonTerminal::DEFINITION},
-               Precedence::NONE, Associativity::NONE,
-               listReducer<NonTerminal::DEFINITIONS, AstNode, 0, 1>),
-    parserRule(NonTerminal::DEFINITION,
+    parserRule(NonTerminal::STATEMENT_LIST, {NonTerminal::STATEMENT},
+               Precedence::LIST_INITIALIZE, Associativity::NONE,
+               listReducer<NonTerminal::STATEMENT_LIST, AstNode, -1, 0>),
+    parserRule(NonTerminal::STATEMENT_LIST,
+               {NonTerminal::STATEMENT_LIST, NonTerminal::STATEMENT},
+               Precedence::LIST_APPEND, Associativity::NONE,
+               listReducer<NonTerminal::STATEMENT_LIST, AstNode, 0, 1>),
+    parserRule(NonTerminal::STATEMENT,
                {TokenType::LET, TokenType::IDENTIFIER, TokenType::EQUALS,
                 NonTerminal::EXPRESSION, TokenType::SEMICOLON},
                Precedence::NONE, Associativity::NONE,
-               simpleReducer<NonTerminal::DEFINITION, DefinitionNode,
+               simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
                              IndexAndType<1, std::string>, IndexAndType<3>,
                              IndexAndType<0, std::string>>),
-    parserRule(NonTerminal::DEFINITION,
+    parserRule(NonTerminal::STATEMENT,
                {TokenType::MUT, TokenType::IDENTIFIER, TokenType::EQUALS,
                 NonTerminal::EXPRESSION, TokenType::SEMICOLON},
                Precedence::NONE, Associativity::NONE,
-               simpleReducer<NonTerminal::DEFINITION, DefinitionNode,
+               simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
                              IndexAndType<1, std::string>, IndexAndType<3>,
                              IndexAndType<0, std::string>>),
     parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER}, Precedence::NONE,
-               Associativity::NONE,
-               simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
-                             IndexAndType<0, std::string>>),
-    parserRule(NonTerminal::EXPRESSION,
-               {TokenType::INTEGER, TokenType::AMPERSAND}, Precedence::NONE,
                Associativity::NONE,
                simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
                              IndexAndType<0, std::string>>),
@@ -176,7 +176,7 @@ static void printStack(std::vector<ParserSymbol> &stack) {
 std::unique_ptr<AstNode> Parser::parse() {
   std::vector<ParserSymbol> stack;
   Token lookahead = lexer.nextToken();
-  while (stack.size() < 1 ||
+  while (stack.size() != 1 ||
          stack[0].type != SymbolType{NonTerminal::COMPILATION_UNIT}) {
     if (lookahead.type == TokenType::ERROR) {
       throw std::runtime_error("Error while parsing: "s + lookahead.value);
@@ -208,20 +208,17 @@ std::unique_ptr<AstNode> Parser::parse() {
     }
     RuleMatch *dominantMatch = nullptr;
     for (auto &match : matches) {
-      if (!dominantMatch ||
-          (match.matchingSymbolCount > dominantMatch->matchingSymbolCount &&
-           match.rule.precedence >= dominantMatch->rule.precedence) ||
+      if (!dominantMatch || dominantMatch->matchingSymbolCount == 0 ||
           match.rule.precedence > dominantMatch->rule.precedence) {
         dominantMatch = &match;
-      } else if (dominantMatch &&
-                 dominantMatch->matchingSymbolCount ==
-                     match.matchingSymbolCount &&
+      } else if (match.matchingSymbolCount > 0 && dominantMatch &&
                  dominantMatch->rule.precedence == match.rule.precedence) {
         if (match.canReduce && dominantMatch->canReduce) {
           std::cout << "Reduce/reduce conflict: " << std::endl;
           printStack(stack);
           std::cout << "Reduction 1: ";
           for (auto &symbol : match.rule.symbols) {
+            std::cout << " ";
             if (std::holds_alternative<TokenType>(symbol)) {
               std::cout << tokenTypeToString(std::get<TokenType>(symbol));
             } else {
@@ -232,6 +229,7 @@ std::unique_ptr<AstNode> Parser::parse() {
                     << std::endl;
           std::cout << "Reduction 2: ";
           for (auto &symbol : dominantMatch->rule.symbols) {
+            std::cout << " ";
             if (std::holds_alternative<TokenType>(symbol)) {
               std::cout << tokenTypeToString(std::get<TokenType>(symbol));
             } else {
@@ -244,8 +242,11 @@ std::unique_ptr<AstNode> Parser::parse() {
         } else if (dominantMatch->canReduce != match.canReduce) {
           std::cout << "Shift/reduce conflict: " << std::endl;
           printStack(stack);
+          auto &reducingRule =
+              dominantMatch->canReduce ? dominantMatch->rule : match.rule;
           std::cout << "Reduction: ";
-          for (auto &symbol : dominantMatch->rule.symbols) {
+          for (auto &symbol : reducingRule.symbols) {
+            std::cout << " ";
             if (std::holds_alternative<TokenType>(symbol)) {
               std::cout << tokenTypeToString(std::get<TokenType>(symbol));
             } else {
@@ -258,8 +259,10 @@ std::unique_ptr<AstNode> Parser::parse() {
           std::cout << tokenTypeToString(lookahead.type);
           std::cout << std::endl;
           std::cout << "  To match this rule:" << std::endl;
-          std::cout << "  ";
-          for (auto &symbol : match.rule.symbols) {
+          auto &shiftingRule =
+              dominantMatch->canReduce ? match.rule : dominantMatch->rule;
+          for (auto &symbol : shiftingRule.symbols) {
+            std::cout << " ";
             if (std::holds_alternative<TokenType>(symbol)) {
               std::cout << tokenTypeToString(std::get<TokenType>(symbol));
             } else {
@@ -283,6 +286,7 @@ std::unique_ptr<AstNode> Parser::parse() {
       stack.push_back(ParserSymbol{lookahead.type, lookahead.value});
       lookahead = lexer.nextToken();
     }
+    printStack(stack);
   }
   return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
 }

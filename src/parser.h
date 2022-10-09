@@ -8,10 +8,7 @@
 namespace sl {
 enum class NonTerminal {
   COMPILATION_UNIT,
-  DEFINITIONS,
-  DEFINITION,
   EXPRESSION,
-  VARIABLE_REFERENCE,
   STATEMENT,
   STATEMENT_LIST,
 };
@@ -19,14 +16,8 @@ static inline std::string nonTerminalToString(NonTerminal nonTerminal) {
   switch (nonTerminal) {
   case NonTerminal::COMPILATION_UNIT:
     return "COMPILATION_UNIT";
-  case NonTerminal::DEFINITIONS:
-    return "DEFINITIONS";
-  case NonTerminal::DEFINITION:
-    return "DEFINITION";
   case NonTerminal::EXPRESSION:
     return "EXPRESSION";
-  case NonTerminal::VARIABLE_REFERENCE:
-    return "VARIABLE_REFERENCE";
   case NonTerminal::STATEMENT:
     return "STATEMENT";
   case NonTerminal::STATEMENT_LIST:

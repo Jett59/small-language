@@ -171,6 +171,9 @@ Token Lexer::nextToken() {
   char c;
   do {
     c = readCharacter();
+    if (input.eof()) {
+      return Token{.type = TokenType::END, .value = ""};
+    }
   } while (isspace(c));
   unreadCharacter();
   int startLine = line, startColumn = column;

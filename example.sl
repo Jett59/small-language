@@ -1,2 +1,2 @@
 let example = "example";
-mut answer = 42 &;
+mut answer = 42;
