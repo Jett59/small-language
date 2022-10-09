@@ -9,7 +9,7 @@
 namespace sl {
 enum class AstNodeType {
   COMPILATION_UNIT,
-  VARIABLE_DEFINITION,
+  DEFINITION,
   INTEGER_LITERAL,
   FLOAT_LITERAL,
   STRING_LITERAL
@@ -27,13 +27,16 @@ public:
       : AstNode(AstNodeType::COMPILATION_UNIT),
         definitions(std::move(definitions)) {}
 };
-class VariableDefinitionNode : public AstNode {
+class DefinitionNode : public AstNode {
 public:
+  bool constant;
   std::string name;
   std::unique_ptr<AstNode> initializer;
-  VariableDefinitionNode(std::string name, std::unique_ptr<AstNode> initializer)
-      : AstNode(AstNodeType::VARIABLE_DEFINITION), name(std::move(name)),
-        initializer(std::move(initializer)) {}
+  DefinitionNode(std::string name, std::unique_ptr<AstNode> initializer,
+                 const std::string &declarationKeyword)
+      : AstNode(AstNodeType::DEFINITION), name(std::move(name)),
+        initializer(std::move(initializer)),
+        constant(declarationKeyword == "let") {}
 };
 class IntegerLiteralNode : public AstNode {
 public:
