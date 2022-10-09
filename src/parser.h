@@ -11,6 +11,7 @@ enum class NonTerminal {
   EXPRESSION,
   STATEMENT,
   STATEMENT_LIST,
+  TYPE,
 };
 static inline std::string nonTerminalToString(NonTerminal nonTerminal) {
   switch (nonTerminal) {
@@ -22,6 +23,8 @@ static inline std::string nonTerminalToString(NonTerminal nonTerminal) {
     return "STATEMENT";
   case NonTerminal::STATEMENT_LIST:
     return "STATEMENT_LIST";
+  case NonTerminal::TYPE:
+    return "TYPE";
   }
   return "UNKNOWN";
 }

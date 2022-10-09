@@ -18,6 +18,19 @@ enum class TokenType {
   ELSE,
   WHILE,
   FOR,
+  I8,
+  I16,
+  I32,
+  I64,
+  U8,
+  U16,
+  U32,
+  U64,
+  F32,
+  F64,
+  BOOL,
+  CHAR,
+  STRING_TYPE,
   EQUALS,
   PLUS,
   MINUS,
@@ -77,6 +90,32 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "while";
   case TokenType::FOR:
     return "for";
+  case TokenType::I8:
+    return "i8";
+  case TokenType::I16:
+    return "i16";
+  case TokenType::I32:
+    return "i32";
+  case TokenType::I64:
+    return "i64";
+  case TokenType::U8:
+    return "u8";
+  case TokenType::U16:
+    return "u16";
+  case TokenType::U32:
+    return "u32";
+  case TokenType::U64:
+    return "u64";
+  case TokenType::F32:
+    return "f32";
+  case TokenType::F64:
+    return "f64";
+  case TokenType::BOOL:
+    return "bool";
+  case TokenType::CHAR:
+    return "char";
+  case TokenType::STRING_TYPE:
+    return "string";
   case TokenType::EQUALS:
     return "=";
   case TokenType::PLUS:
@@ -124,6 +163,6 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
   }
   return "unknown";
 }
-}
+} // namespace sl
 
 #endif

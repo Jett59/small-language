@@ -1,6 +1,7 @@
 #ifndef SL_AST_H
 #define SL_AST_H
 
+#include "type.h"
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -12,7 +13,8 @@ enum class AstNodeType {
   DEFINITION,
   INTEGER_LITERAL,
   FLOAT_LITERAL,
-  STRING_LITERAL
+  STRING_LITERAL,
+  FUNCTION,
 };
 class AstNode {
 public:
@@ -59,6 +61,17 @@ public:
   std::string value;
   StringLiteralNode(std::string value)
       : AstNode(AstNodeType::STRING_LITERAL), value(std::move(value)) {}
+};
+class FunctionNode : public AstNode {
+public:
+  std::unique_ptr<Type> returnType;
+  std::vector<NameAndType> parameters;
+  std::unique_ptr<AstNode> body;
+  FunctionNode(std::unique_ptr<Type> returnType,
+               std::vector<NameAndType> parameters,
+               std::unique_ptr<AstNode> body)
+      : AstNode(AstNodeType::FUNCTION), returnType(std::move(returnType)),
+        parameters(std::move(parameters)), body(std::move(body)) {}
 };
 } // namespace sl
 
