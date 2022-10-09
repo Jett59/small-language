@@ -73,6 +73,7 @@ void assertThat(bool condition, const std::string &message) {
 template <NonTerminal type, typename NodeClass, typename... symbolIndices>
 ParserSymbol simpleReducer(std::vector<ParserSymbol> &symbols) {
   // Assert that the symbols have the expected types.
+  // Quite ugly code but it is hard with parameter packs.
   (void)std::initializer_list<int>{
       (assertThat(
            std::holds_alternative<typename symbolIndices::Type>(
@@ -87,6 +88,25 @@ ParserSymbol simpleReducer(std::vector<ParserSymbol> &symbols) {
   return {type, std::move(value)};
 }
 
+template <NonTerminal type, typename ElementClass, int listIndex,
+          int additionalIndex>
+ParserSymbol listReducer(std::vector<ParserSymbol> &symbols) {
+  if (listIndex >= 0) {
+    auto list = std::move(std::get<std::vector<std::unique_ptr<ElementClass>>>(
+        symbols[listIndex].value));
+    auto additional = std::move(std::get<std::unique_ptr<ElementClass>>(
+        symbols[additionalIndex].value));
+    list.push_back(std::move(additional));
+    return {type, std::move(list)};
+  } else {
+    auto list = std::vector<std::unique_ptr<ElementClass>>();
+    auto additional = std::move(std::get<std::unique_ptr<ElementClass>>(
+        symbols[additionalIndex].value));
+    list.push_back(std::move(additional));
+    return {type, std::move(list)};
+  }
+}
+
 static ParserRule parserRules[] = {
     parserRule(
         NonTerminal::COMPILATION_UNIT,
@@ -94,6 +114,12 @@ static ParserRule parserRules[] = {
         Associativity::NONE,
         simpleReducer<NonTerminal::COMPILATION_UNIT, CompilationUnitNode,
                       IndexAndType<0, std::vector<std::unique_ptr<AstNode>>>>),
+    parserRule(NonTerminal::DEFINITIONS, {NonTerminal::DEFINITION},
+               Precedence::NONE, Associativity::NONE,
+               listReducer<NonTerminal::DEFINITIONS, AstNode, -1, 0>),
+    parserRule(NonTerminal::DEFINITIONS, {NonTerminal::DEFINITIONS, NonTerminal::DEFINITION},
+               Precedence::NONE, Associativity::NONE,
+               listReducer<NonTerminal::DEFINITIONS, AstNode, 0, 1>),
     parserRule(NonTerminal::DEFINITION,
                {TokenType::LET, TokenType::IDENTIFIER, TokenType::EQUALS,
                 NonTerminal::EXPRESSION, TokenType::SEMICOLON},
