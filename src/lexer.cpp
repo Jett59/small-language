@@ -8,6 +8,9 @@ char Lexer::readCharacter() {
   if (bufferIndex >= buffer.length()) {
     do {
       input.read(&c, 1);
+      if (input.eof()) {
+        return '\0';
+      }
     } while (c == '\r');
     if (c == '\n') {
       line++;
@@ -118,9 +121,7 @@ template <size_t size> struct StringLiteral {
     std::copy_n(literal, size, value);
   }
 
-  constexpr char operator[](size_t i) const {
-    return value[i];
-  }
+  constexpr char operator[](size_t i) const { return value[i]; }
 };
 
 template <TokenType tokenType, StringLiteral string>

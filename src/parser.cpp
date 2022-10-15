@@ -155,6 +155,16 @@ binaryOperatorRule(SymbolType symbol, Precedence precedence,
       });
 }
 
+template <size_t index>
+static ParserRule
+restructureParserRule(NonTerminal type,
+                      const std::vector<SymbolType> &symbols) {
+  return ParserRule{type, symbols, Precedence::DEFAULT, Associativity::DEFAULT,
+                    [](std::vector<ParserSymbol> &symbols) {
+                      return std::move(symbols[index]);
+                    }};
+}
+
 static ParserRule parserRules[] = {
     parserRule(
         NonTerminal::COMPILATION_UNIT,
@@ -183,6 +193,9 @@ static ParserRule parserRules[] = {
                simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
                              IndexAndType<1, std::string>, IndexAndType<3>,
                              IndexAndType<0, std::string>>),
+    restructureParserRule<1>(NonTerminal::EXPRESSION,
+                             {TokenType::LEFT_PAREN, NonTerminal::EXPRESSION,
+                              TokenType::RIGHT_PAREN}),
     parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER},
                Precedence::DEFAULT, Associativity::DEFAULT,
                simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
@@ -292,9 +305,10 @@ void printRule(const ParserRule &rule) {
 
 size_t getMatchingSymbolCount(const std::vector<ParserSymbol> &stack,
                               const ParserRule &rule, size_t skipInitial = 0) {
-  size_t initialStackIndex = (stack.size() > rule.symbols.size()
-                                 ? stack.size() - rule.symbols.size()
-                                 : 0) + skipInitial;
+  size_t initialStackIndex =
+      (stack.size() > rule.symbols.size() ? stack.size() - rule.symbols.size()
+                                          : 0) +
+      skipInitial;
   if (initialStackIndex >= stack.size()) {
     return 0;
   }
@@ -329,7 +343,8 @@ std::unique_ptr<AstNode> Parser::parse() {
         } else {
           size_t nextMatchingSymbolCount =
               getMatchingSymbolCount(stack, rule, 1);
-          assertThat(nextMatchingSymbolCount != matchingSymbolCount, "Symbol counts are the same???");
+          assertThat(nextMatchingSymbolCount != matchingSymbolCount,
+                     "Symbol counts are the same???");
           if (rule.symbols[nextMatchingSymbolCount] ==
               SymbolType{lookahead.type}) {
             matches.push_back({false, true, rule, matchingSymbolCount});
