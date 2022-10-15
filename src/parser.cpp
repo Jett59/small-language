@@ -140,15 +140,19 @@ template <BinaryOperatorType type>
 static ParserRule
 binaryOperatorRule(SymbolType symbol, Precedence precedence,
                    Associativity associativity = Associativity::DEFAULT) {
-  return parserRule(NonTerminal::EXPRESSION,
-                    {NonTerminal::EXPRESSION, symbol, NonTerminal::EXPRESSION},
-                    precedence, associativity,
-                    [](std::vector<ParserSymbol> &symbols) {
-                      return ParserSymbol{
-                          NonTerminal::EXPRESSION,
-                          std::make_unique<BinaryOperatorNode>(type, std::get<std::unique_ptr<AstNode>>(std::move(symbols[0].value)), std::get<std::unique_ptr<AstNode>>(std::move(symbols[2].value))),
-                      };
-                    });
+  return parserRule(
+      NonTerminal::EXPRESSION,
+      {NonTerminal::EXPRESSION, symbol, NonTerminal::EXPRESSION}, precedence,
+      associativity, [](std::vector<ParserSymbol> &symbols) {
+        return ParserSymbol{
+            NonTerminal::EXPRESSION,
+            std::make_unique<BinaryOperatorNode>(
+                type,
+                std::get<std::unique_ptr<AstNode>>(std::move(symbols[0].value)),
+                std::get<std::unique_ptr<AstNode>>(
+                    std::move(symbols[2].value))),
+        };
+      });
 }
 
 static ParserRule parserRules[] = {
@@ -259,6 +263,8 @@ static ParserRule parserRules[] = {
                                                        Precedence::BITWISE),
     binaryOperatorRule<BinaryOperatorType::BITWISE_XOR>(TokenType::CARET,
                                                         Precedence::BITWISE),
+    binaryOperatorRule<BinaryOperatorType::ASSIGN>(
+        TokenType::EQUALS, Precedence::ASSIGNMENT, Associativity::RIGHT),
 };
 
 struct RuleMatch {
@@ -285,10 +291,13 @@ void printRule(const ParserRule &rule) {
 }
 
 size_t getMatchingSymbolCount(const std::vector<ParserSymbol> &stack,
-                              const ParserRule &rule) {
-  size_t initialStackIndex = stack.size() > rule.symbols.size()
+                              const ParserRule &rule, size_t skipInitial = 0) {
+  size_t initialStackIndex = (stack.size() > rule.symbols.size()
                                  ? stack.size() - rule.symbols.size()
-                                 : 0;
+                                 : 0) + skipInitial;
+  if (initialStackIndex >= stack.size()) {
+    return 0;
+  }
   size_t symbolIndex = 0;
   for (size_t stackIndex = initialStackIndex; stackIndex < stack.size();
        stackIndex++) {
@@ -315,7 +324,19 @@ std::unique_ptr<AstNode> Parser::parse() {
     for (auto &rule : parserRules) {
       size_t matchingSymbolCount = getMatchingSymbolCount(stack, rule);
       if (matchingSymbolCount == rule.symbols.size()) {
-        matches.push_back({true, false, rule, matchingSymbolCount});
+        if (rule.associativity != Associativity::RIGHT) {
+          matches.push_back({true, false, rule, matchingSymbolCount});
+        } else {
+          size_t nextMatchingSymbolCount =
+              getMatchingSymbolCount(stack, rule, 1);
+          assertThat(nextMatchingSymbolCount != matchingSymbolCount, "Symbol counts are the same???");
+          if (rule.symbols[nextMatchingSymbolCount] ==
+              SymbolType{lookahead.type}) {
+            matches.push_back({false, true, rule, matchingSymbolCount});
+          } else {
+            matches.push_back({true, false, rule, matchingSymbolCount});
+          }
+        }
       } else if (rule.symbols[matchingSymbolCount] ==
                  SymbolType{lookahead.type}) {
         matches.push_back({false, true, rule, matchingSymbolCount});
