@@ -17,6 +17,7 @@ enum class AstNodeType {
   STRING_LITERAL,
   FUNCTION,
   BINARY_OPERATOR,
+  NIL,
 };
 class AstNode {
 public:
@@ -128,6 +129,10 @@ public:
                      std::unique_ptr<AstNode> right)
       : AstNode(AstNodeType::BINARY_OPERATOR), operatorType(operatorType),
         left(std::move(left)), right(std::move(right)) {}
+};
+class NilNode : public AstNode {
+public:
+  NilNode() : AstNode(AstNodeType::NIL) {}
 };
 } // namespace sl
 

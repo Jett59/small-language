@@ -1,6 +1,7 @@
 #include "parser.h"
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -278,12 +279,15 @@ static ParserRule parserRules[] = {
                                                         Precedence::BITWISE),
     binaryOperatorRule<BinaryOperatorType::ASSIGN>(
         TokenType::EQUALS, Precedence::ASSIGNMENT, Associativity::RIGHT),
+    parserRule(NonTerminal::EXPRESSION, {TokenType::NIL}, Precedence::DEFAULT,
+               Associativity::DEFAULT,
+               simpleReducer<NonTerminal::EXPRESSION, NilNode>),
 };
 
 struct RuleMatch {
   bool canReduce;
   bool shouldShift;
-  ParserRule &rule;
+  const ParserRule &rule;
   size_t matchingSymbolCount;
 };
 
@@ -324,6 +328,58 @@ size_t getMatchingSymbolCount(const std::vector<ParserSymbol> &stack,
   return symbolIndex;
 }
 
+static std::optional<RuleMatch>
+findSymbolMatch(const std::vector<ParserSymbol> &stack, const ParserRule &rule,
+                const Token &lookahead) {
+  size_t matchingSymbolCount = getMatchingSymbolCount(stack, rule);
+  if (matchingSymbolCount == rule.symbols.size()) {
+    if (rule.associativity != Associativity::RIGHT) {
+      return RuleMatch{true, false, rule, matchingSymbolCount};
+    } else {
+      size_t nextMatchingSymbolCount = getMatchingSymbolCount(stack, rule, 1);
+      assertThat(nextMatchingSymbolCount != matchingSymbolCount,
+                 "Symbol counts are the same???");
+      if (rule.symbols[nextMatchingSymbolCount] == SymbolType{lookahead.type}) {
+        return RuleMatch{false, true, rule, matchingSymbolCount};
+      } else {
+        return RuleMatch{true, false, rule, matchingSymbolCount};
+      }
+    }
+  } else if (rule.symbols[matchingSymbolCount] == SymbolType{lookahead.type}) {
+    return RuleMatch{false, true, rule, matchingSymbolCount};
+  }
+  return std::nullopt;
+}
+
+// Creates a stack with the same symbol types as the given stack but all
+// semantic values are removed.
+static std::vector<ParserSymbol>
+createFakeStack(const std::vector<ParserSymbol> &stack) {
+  std::vector<ParserSymbol> fakeStack;
+  fakeStack.reserve(stack.size());
+  for (const auto &symbol : stack) {
+    fakeStack.push_back(ParserSymbol{symbol.type});
+  }
+  return fakeStack;
+}
+
+static bool
+canContinueParsingAfterReduction(const std::vector<ParserSymbol> &stack,
+                                 const RuleMatch &match,
+                                 const Token &lookahead) {
+  // Pretend to do the reduction and see if there is a rule to match.
+  // If there isn't, don't use this match as dominant.
+  std::vector<ParserSymbol> testStack = createFakeStack(stack);
+  testStack.resize(testStack.size() - match.matchingSymbolCount);
+  testStack.push_back({match.rule.type});
+  for (const auto &rule : parserRules) {
+    if (findSymbolMatch(testStack, rule, lookahead)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::unique_ptr<AstNode> Parser::parse() {
   std::vector<ParserSymbol> stack;
   Token lookahead = lexer.nextToken();
@@ -336,46 +392,37 @@ std::unique_ptr<AstNode> Parser::parse() {
     }
     std::vector<RuleMatch> matches;
     for (auto &rule : parserRules) {
-      size_t matchingSymbolCount = getMatchingSymbolCount(stack, rule);
-      if (matchingSymbolCount == rule.symbols.size()) {
-        if (rule.associativity != Associativity::RIGHT) {
-          matches.push_back({true, false, rule, matchingSymbolCount});
-        } else {
-          size_t nextMatchingSymbolCount =
-              getMatchingSymbolCount(stack, rule, 1);
-          assertThat(nextMatchingSymbolCount != matchingSymbolCount,
-                     "Symbol counts are the same???");
-          if (rule.symbols[nextMatchingSymbolCount] ==
-              SymbolType{lookahead.type}) {
-            matches.push_back({false, true, rule, matchingSymbolCount});
-          } else {
-            matches.push_back({true, false, rule, matchingSymbolCount});
-          }
-        }
-      } else if (rule.symbols[matchingSymbolCount] ==
-                 SymbolType{lookahead.type}) {
-        matches.push_back({false, true, rule, matchingSymbolCount});
+      auto match = findSymbolMatch(stack, rule, lookahead);
+      if (match) {
+        matches.push_back(*match);
       }
-    }
-    if (matches.size() == 0) {
-      throw std::runtime_error("Syntax error: unexpected "s +
-                               symbolTypeToString(lastSymbolType));
     }
     RuleMatch *dominantMatch = nullptr;
     for (auto &match : matches) {
       if (!dominantMatch || dominantMatch->matchingSymbolCount == 0 ||
           match.rule.precedence > dominantMatch->rule.precedence) {
-        dominantMatch = &match;
+        if (match.canReduce &&
+            match.rule.type != NonTerminal::COMPILATION_UNIT) {
+          if (canContinueParsingAfterReduction(stack, match, lookahead)) {
+            dominantMatch = &match;
+          }
+        } else {
+          dominantMatch = &match;
+        }
       } else if (match.matchingSymbolCount > 0 && dominantMatch &&
                  dominantMatch->rule.precedence == match.rule.precedence) {
         if (match.canReduce && dominantMatch->canReduce) {
-          std::cout << "Reduce/reduce conflict: " << std::endl;
-          printStack(stack);
-          std::cout << "Reduction 1: ";
-          printRule(dominantMatch->rule);
-          std::cout << "Reduction 2: ";
-          printRule(match.rule);
-          throw std::logic_error("Ambiguous grammar");
+          bool isValidReduction =
+              canContinueParsingAfterReduction(stack, match, lookahead);
+          if (isValidReduction) {
+            std::cout << "Reduce/reduce conflict: " << std::endl;
+            printStack(stack);
+            std::cout << "Reduction 1: ";
+            printRule(dominantMatch->rule);
+            std::cout << "Reduction 2: ";
+            printRule(match.rule);
+            throw std::logic_error("Ambiguous grammar");
+          }
         } else if (dominantMatch->canReduce != match.canReduce) {
           std::cout << "Shift/reduce conflict: " << std::endl;
           printStack(stack);
@@ -393,6 +440,10 @@ std::unique_ptr<AstNode> Parser::parse() {
           throw std::logic_error("Ambiguous grammar");
         }
       }
+    }
+    if (!dominantMatch) {
+      throw std::runtime_error("Syntax error: unexpected "s +
+                               symbolTypeToString(lastSymbolType));
     }
     if (dominantMatch->canReduce) {
       lastSymbolType = dominantMatch->rule.type;
