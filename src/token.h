@@ -33,13 +33,21 @@ enum class TokenType {
   CHAR,
   STRING_TYPE,
   EQUALS,
+  EQUALS_EQUALS,
+  BANG_EQUALS,
+  LESS,
+  LESS_EQUALS,
+  GREATER,
+  GREATER_EQUALS,
   PLUS,
   MINUS,
   STAR,
   SLASH,
   PERCENT,
   AMPERSAND,
+  AMPERSAND_AMPERSAND,
   PIPE,
+  PIPE_PIPE,
   CARET,
   TILDE,
   BANG,
@@ -122,6 +130,18 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "string";
   case TokenType::EQUALS:
     return "=";
+  case TokenType::EQUALS_EQUALS:
+    return "==";
+  case TokenType::BANG_EQUALS:
+    return "!=";
+  case TokenType::LESS:
+    return "<";
+  case TokenType::LESS_EQUALS:
+    return "<=";
+  case TokenType::GREATER:
+    return ">";
+  case TokenType::GREATER_EQUALS:
+    return ">=";
   case TokenType::PLUS:
     return "+";
   case TokenType::MINUS:
@@ -134,8 +154,12 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "%";
   case TokenType::AMPERSAND:
     return "&";
+  case TokenType::AMPERSAND_AMPERSAND:
+    return "&&";
   case TokenType::PIPE:
     return "|";
+  case TokenType::PIPE_PIPE:
+    return "||";
   case TokenType::CARET:
     return "^";
   case TokenType::TILDE:

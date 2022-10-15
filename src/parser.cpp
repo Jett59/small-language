@@ -136,6 +136,21 @@ static ParserRule primitiveTypeRule(SymbolType symbol) {
                     });
 }
 
+template <BinaryOperatorType type>
+static ParserRule
+binaryOperatorRule(SymbolType symbol, Precedence precedence,
+                   Associativity associativity = Associativity::DEFAULT) {
+  return parserRule(NonTerminal::EXPRESSION,
+                    {NonTerminal::EXPRESSION, symbol, NonTerminal::EXPRESSION},
+                    precedence, associativity,
+                    [](std::vector<ParserSymbol> &symbols) {
+                      return ParserSymbol{
+                          NonTerminal::EXPRESSION,
+                          std::make_unique<BinaryOperatorNode>(type, std::get<std::unique_ptr<AstNode>>(std::move(symbols[0].value)), std::get<std::unique_ptr<AstNode>>(std::move(symbols[2].value))),
+                      };
+                    });
+}
+
 static ParserRule parserRules[] = {
     parserRule(
         NonTerminal::COMPILATION_UNIT,
@@ -215,7 +230,36 @@ static ParserRule parserRules[] = {
                    NonTerminal::EXPRESSION, FunctionNode,
                    IndexAndType<5, std::unique_ptr<Type>>,
                    IndexAndType<2, std::vector<std::unique_ptr<NameAndType>>>,
-                   IndexAndType<7, std::vector<std::unique_ptr<AstNode>>>>)};
+                   IndexAndType<7, std::vector<std::unique_ptr<AstNode>>>>),
+    binaryOperatorRule<BinaryOperatorType::ADD>(TokenType::PLUS,
+                                                Precedence::SUM),
+    binaryOperatorRule<BinaryOperatorType::SUBTRACT>(TokenType::MINUS,
+                                                     Precedence::SUM),
+    binaryOperatorRule<BinaryOperatorType::MULTIPLY>(TokenType::STAR,
+                                                     Precedence::PRODUCT),
+    binaryOperatorRule<BinaryOperatorType::DIVIDE>(TokenType::SLASH,
+                                                   Precedence::PRODUCT),
+    binaryOperatorRule<BinaryOperatorType::MODULO>(TokenType::PERCENT,
+                                                   Precedence::PRODUCT),
+    binaryOperatorRule<BinaryOperatorType::EQUAL>(TokenType::EQUALS_EQUALS,
+                                                  Precedence::COMPARISON),
+    binaryOperatorRule<BinaryOperatorType::NOT_EQUAL>(TokenType::BANG_EQUALS,
+                                                      Precedence::COMPARISON),
+    binaryOperatorRule<BinaryOperatorType::LESS_THAN>(TokenType::LESS,
+                                                      Precedence::COMPARISON),
+    binaryOperatorRule<BinaryOperatorType::LESS_THAN_OR_EQUAL>(
+        TokenType::LESS_EQUALS, Precedence::COMPARISON),
+    binaryOperatorRule<BinaryOperatorType::GREATER_THAN>(
+        TokenType::GREATER, Precedence::COMPARISON),
+    binaryOperatorRule<BinaryOperatorType::GREATER_THAN_OR_EQUAL>(
+        TokenType::GREATER_EQUALS, Precedence::COMPARISON),
+    binaryOperatorRule<BinaryOperatorType::BITWISE_AND>(TokenType::AMPERSAND,
+                                                        Precedence::BITWISE),
+    binaryOperatorRule<BinaryOperatorType::BITWISE_OR>(TokenType::PIPE,
+                                                       Precedence::BITWISE),
+    binaryOperatorRule<BinaryOperatorType::BITWISE_XOR>(TokenType::CARET,
+                                                        Precedence::BITWISE),
+};
 
 struct RuleMatch {
   bool canReduce;

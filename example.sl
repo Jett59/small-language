@@ -1,3 +1,1 @@
-let doit = fn(a: i32, b: bool)-> nil {
-    let abc = 123;
-};
+let abc = 123 + 321 > 456 - 654;

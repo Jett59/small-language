@@ -3,6 +3,7 @@
 
 #include "type.h"
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ enum class AstNodeType {
   FLOAT_LITERAL,
   STRING_LITERAL,
   FUNCTION,
+  BINARY_OPERATOR,
 };
 class AstNode {
 public:
@@ -72,6 +74,60 @@ public:
                std::vector<std::unique_ptr<AstNode>> body)
       : AstNode(AstNodeType::FUNCTION), returnType(std::move(returnType)),
         parameters(std::move(parameters)), body(std::move(body)) {}
+};
+enum class BinaryOperatorType {
+  ADD,
+  SUBTRACT,
+  MULTIPLY,
+  DIVIDE,
+  MODULO,
+  EQUAL,
+  NOT_EQUAL,
+  LESS_THAN,
+  LESS_THAN_OR_EQUAL,
+  GREATER_THAN,
+  GREATER_THAN_OR_EQUAL,
+  LOGICAL_OR,
+  LOGICAL_AND,
+  BITWISE_OR,
+  BITWISE_AND,
+  BITWISE_XOR,
+  BITWISE_SHIFT_LEFT,
+  BITWISE_SHIFT_RIGHT,
+  ASSIGN,
+};
+static std::map<BinaryOperatorType, std::string> binaryOperatorTypeToString = {
+    {BinaryOperatorType::ADD, "+"},
+    {BinaryOperatorType::SUBTRACT, "-"},
+    {BinaryOperatorType::MULTIPLY, "*"},
+    {BinaryOperatorType::DIVIDE, "/"},
+    {BinaryOperatorType::MODULO, "%"},
+    {BinaryOperatorType::EQUAL, "=="},
+    {BinaryOperatorType::NOT_EQUAL, "!="},
+    {BinaryOperatorType::LESS_THAN, "<"},
+    {BinaryOperatorType::LESS_THAN_OR_EQUAL, "<="},
+    {BinaryOperatorType::GREATER_THAN, ">"},
+    {BinaryOperatorType::GREATER_THAN_OR_EQUAL, ">="},
+    {BinaryOperatorType::LOGICAL_OR, "||"},
+    {BinaryOperatorType::LOGICAL_AND, "&&"},
+    {BinaryOperatorType::BITWISE_OR, "|"},
+    {BinaryOperatorType::BITWISE_AND, "&"},
+    {BinaryOperatorType::BITWISE_XOR, "^"},
+    {BinaryOperatorType::BITWISE_SHIFT_LEFT, "<<"},
+    {BinaryOperatorType::BITWISE_SHIFT_RIGHT, ">>"},
+    {BinaryOperatorType::ASSIGN, "="},
+};
+
+class BinaryOperatorNode : public AstNode {
+public:
+  BinaryOperatorType operatorType;
+  std::unique_ptr<AstNode> left;
+  std::unique_ptr<AstNode> right;
+  BinaryOperatorNode(BinaryOperatorType operatorType,
+                     std::unique_ptr<AstNode> left,
+                     std::unique_ptr<AstNode> right)
+      : AstNode(AstNodeType::BINARY_OPERATOR), operatorType(operatorType),
+        left(std::move(left)), right(std::move(right)) {}
 };
 } // namespace sl
 
