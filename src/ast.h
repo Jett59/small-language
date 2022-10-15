@@ -65,11 +65,11 @@ public:
 class FunctionNode : public AstNode {
 public:
   std::unique_ptr<Type> returnType;
-  std::vector<NameAndType> parameters;
-  std::unique_ptr<AstNode> body;
+  std::vector<std::unique_ptr<NameAndType>> parameters;
+  std::vector<std::unique_ptr<AstNode>> body;
   FunctionNode(std::unique_ptr<Type> returnType,
-               std::vector<NameAndType> parameters,
-               std::unique_ptr<AstNode> body)
+               std::vector<std::unique_ptr<NameAndType>> parameters,
+               std::vector<std::unique_ptr<AstNode>> body)
       : AstNode(AstNodeType::FUNCTION), returnType(std::move(returnType)),
         parameters(std::move(parameters)), body(std::move(body)) {}
 };

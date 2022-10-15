@@ -11,14 +11,17 @@ using SymbolType = std::variant<TokenType, NonTerminal>;
 
 struct ParserSymbol {
   SymbolType type;
-  std::variant<nullptr_t, std::unique_ptr<AstNode>,
-               std::vector<std::unique_ptr<AstNode>>, std::string, std::unique_ptr<Type>>
+  std::variant<std::nullptr_t, std::unique_ptr<AstNode>,
+               std::vector<std::unique_ptr<AstNode>>, std::string,
+               std::unique_ptr<Type>, std::unique_ptr<NameAndType>,
+               std::vector<std::unique_ptr<NameAndType>>>
       value;
   int line, column;
 };
 
 enum class Precedence {
-  NONE,
+  LOWEST,
+  DEFAULT,
   // For things like the STATEMENT_LIST which require precedence to specify that
   // the list initializer should not be used if appending is an option.
   LIST_INITIALIZE,
@@ -34,6 +37,14 @@ enum class Precedence {
   POSTFIX,
 };
 
+static inline std::string symbolTypeToString(const SymbolType &type) {
+  if (std::holds_alternative<TokenType>(type)) {
+    return tokenTypeToString(std::get<TokenType>(type));
+  } else {
+    return nonTerminalToString(std::get<NonTerminal>(type));
+  }
+}
+
 static inline bool operator<(Precedence a, Precedence b) {
   return static_cast<int>(a) < static_cast<int>(b);
 }
@@ -47,7 +58,7 @@ static inline bool operator>=(Precedence a, Precedence b) {
   return static_cast<int>(a) >= static_cast<int>(b);
 }
 
-enum class Associativity { NONE, LEFT, RIGHT };
+enum class Associativity { DEFAULT, LEFT, RIGHT };
 
 struct ParserRule {
   NonTerminal type;
@@ -115,8 +126,8 @@ ParserSymbol listReducer(std::vector<ParserSymbol> &symbols) {
 
 template <PrimitiveType type>
 static ParserRule primitiveTypeRule(SymbolType symbol) {
-  return parserRule(NonTerminal::TYPE, {symbol}, Precedence::NONE,
-                    Associativity::NONE,
+  return parserRule(NonTerminal::TYPE, {symbol}, Precedence::DEFAULT,
+                    Associativity::DEFAULT,
                     [](std::vector<ParserSymbol> &symbols) {
                       return ParserSymbol{
                           NonTerminal::TYPE,
@@ -128,43 +139,44 @@ static ParserRule primitiveTypeRule(SymbolType symbol) {
 static ParserRule parserRules[] = {
     parserRule(
         NonTerminal::COMPILATION_UNIT,
-        {NonTerminal::STATEMENT_LIST, TokenType::END}, Precedence::NONE,
-        Associativity::NONE,
+        {NonTerminal::STATEMENT_LIST, TokenType::END}, Precedence::DEFAULT,
+        Associativity::DEFAULT,
         simpleReducer<NonTerminal::COMPILATION_UNIT, CompilationUnitNode,
                       IndexAndType<0, std::vector<std::unique_ptr<AstNode>>>>),
     parserRule(NonTerminal::STATEMENT_LIST, {NonTerminal::STATEMENT},
-               Precedence::LIST_INITIALIZE, Associativity::NONE,
+               Precedence::LIST_INITIALIZE, Associativity::DEFAULT,
                listReducer<NonTerminal::STATEMENT_LIST, AstNode, -1, 0>),
     parserRule(NonTerminal::STATEMENT_LIST,
                {NonTerminal::STATEMENT_LIST, NonTerminal::STATEMENT},
-               Precedence::LIST_APPEND, Associativity::NONE,
+               Precedence::LIST_APPEND, Associativity::DEFAULT,
                listReducer<NonTerminal::STATEMENT_LIST, AstNode, 0, 1>),
     parserRule(NonTerminal::STATEMENT,
                {TokenType::LET, TokenType::IDENTIFIER, TokenType::EQUALS,
                 NonTerminal::EXPRESSION, TokenType::SEMICOLON},
-               Precedence::NONE, Associativity::NONE,
+               Precedence::DEFAULT, Associativity::DEFAULT,
                simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
                              IndexAndType<1, std::string>, IndexAndType<3>,
                              IndexAndType<0, std::string>>),
     parserRule(NonTerminal::STATEMENT,
                {TokenType::MUT, TokenType::IDENTIFIER, TokenType::EQUALS,
                 NonTerminal::EXPRESSION, TokenType::SEMICOLON},
-               Precedence::NONE, Associativity::NONE,
+               Precedence::DEFAULT, Associativity::DEFAULT,
                simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
                              IndexAndType<1, std::string>, IndexAndType<3>,
                              IndexAndType<0, std::string>>),
-    parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER}, Precedence::NONE,
-               Associativity::NONE,
+    parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER},
+               Precedence::DEFAULT, Associativity::DEFAULT,
                simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
                              IndexAndType<0, std::string>>),
-    parserRule(NonTerminal::EXPRESSION, {TokenType::FLOAT}, Precedence::NONE,
-               Associativity::NONE,
+    parserRule(NonTerminal::EXPRESSION, {TokenType::FLOAT}, Precedence::DEFAULT,
+               Associativity::DEFAULT,
                simpleReducer<NonTerminal::EXPRESSION, FloatLiteralNode,
                              IndexAndType<0, std::string>>),
-    parserRule(NonTerminal::EXPRESSION, {TokenType::STRING}, Precedence::NONE,
-               Associativity::NONE,
+    parserRule(NonTerminal::EXPRESSION, {TokenType::STRING},
+               Precedence::DEFAULT, Associativity::DEFAULT,
                simpleReducer<NonTerminal::EXPRESSION, StringLiteralNode,
                              IndexAndType<0, std::string>>),
+    primitiveTypeRule<PrimitiveType::NIL>(TokenType::NIL),
     primitiveTypeRule<PrimitiveType::I8>(TokenType::I8),
     primitiveTypeRule<PrimitiveType::I16>(TokenType::I16),
     primitiveTypeRule<PrimitiveType::I32>(TokenType::I32),
@@ -178,7 +190,32 @@ static ParserRule parserRules[] = {
     primitiveTypeRule<PrimitiveType::BOOL>(TokenType::BOOL),
     primitiveTypeRule<PrimitiveType::CHAR>(TokenType::CHAR),
     primitiveTypeRule<PrimitiveType::STRING>(TokenType::STRING_TYPE),
-};
+    parserRule(NonTerminal::NAME_AND_TYPE,
+               {TokenType::IDENTIFIER, TokenType::COLON, NonTerminal::TYPE},
+               Precedence::DEFAULT, Associativity::DEFAULT,
+               simpleReducer<NonTerminal::NAME_AND_TYPE, NameAndType,
+                             IndexAndType<0, std::string>,
+                             IndexAndType<2, std::unique_ptr<Type>>>),
+    parserRule(
+        NonTerminal::NAME_AND_TYPE_LIST, {NonTerminal::NAME_AND_TYPE},
+        Precedence::LOWEST, Associativity::DEFAULT,
+        listReducer<NonTerminal::NAME_AND_TYPE_LIST, NameAndType, -1, 0>),
+    parserRule(NonTerminal::NAME_AND_TYPE_LIST,
+               {NonTerminal::NAME_AND_TYPE_LIST, TokenType::COMMA,
+                NonTerminal::NAME_AND_TYPE},
+               Precedence::DEFAULT, Associativity::DEFAULT,
+               listReducer<NonTerminal::NAME_AND_TYPE_LIST, NameAndType, 0, 2>),
+    parserRule(NonTerminal::EXPRESSION,
+               {TokenType::FN, TokenType::LEFT_PAREN,
+                NonTerminal::NAME_AND_TYPE_LIST, TokenType::RIGHT_PAREN,
+                TokenType::ARROW, NonTerminal::TYPE, TokenType::LEFT_BRACE,
+                NonTerminal::STATEMENT_LIST, TokenType::RIGHT_BRACE},
+               Precedence::DEFAULT, Associativity::DEFAULT,
+               simpleReducer<
+                   NonTerminal::EXPRESSION, FunctionNode,
+                   IndexAndType<5, std::unique_ptr<Type>>,
+                   IndexAndType<2, std::vector<std::unique_ptr<NameAndType>>>,
+                   IndexAndType<7, std::vector<std::unique_ptr<AstNode>>>>)};
 
 struct RuleMatch {
   bool canReduce;
@@ -190,11 +227,7 @@ struct RuleMatch {
 static void printStack(std::vector<ParserSymbol> &stack) {
   for (auto &symbol : stack) {
     std::cout << " ";
-    if (std::holds_alternative<TokenType>(symbol.type)) {
-      std::cout << tokenTypeToString(std::get<TokenType>(symbol.type));
-    } else {
-      std::cout << nonTerminalToString(std::get<NonTerminal>(symbol.type));
-    }
+    std::cout << symbolTypeToString(symbol.type);
   }
   std::cout << std::endl;
 }
@@ -202,11 +235,7 @@ static void printStack(std::vector<ParserSymbol> &stack) {
 void printRule(const ParserRule &rule) {
   for (auto &symbol : rule.symbols) {
     std::cout << " ";
-    if (std::holds_alternative<TokenType>(symbol)) {
-      std::cout << tokenTypeToString(std::get<TokenType>(symbol));
-    } else {
-      std::cout << nonTerminalToString(std::get<NonTerminal>(symbol));
-    }
+    std::cout << symbolTypeToString(symbol);
   }
   std::cout << " -> " << nonTerminalToString(rule.type) << std::endl;
 }
@@ -231,7 +260,8 @@ size_t getMatchingSymbolCount(const std::vector<ParserSymbol> &stack,
 std::unique_ptr<AstNode> Parser::parse() {
   std::vector<ParserSymbol> stack;
   Token lookahead = lexer.nextToken();
-  Token lastShifted;
+  SymbolType lastSymbolType; // Lookahead token type for shift, non-terminal for
+                             // reduce
   while (stack.size() != 1 ||
          stack[0].type != SymbolType{NonTerminal::COMPILATION_UNIT}) {
     if (lookahead.type == TokenType::ERROR) {
@@ -249,7 +279,7 @@ std::unique_ptr<AstNode> Parser::parse() {
     }
     if (matches.size() == 0) {
       throw std::runtime_error("Syntax error: unexpected "s +
-                               tokenTypeToString(lastShifted.type));
+                               symbolTypeToString(lastSymbolType));
     }
     RuleMatch *dominantMatch = nullptr;
     for (auto &match : matches) {
@@ -285,6 +315,7 @@ std::unique_ptr<AstNode> Parser::parse() {
       }
     }
     if (dominantMatch->canReduce) {
+      lastSymbolType = dominantMatch->rule.type;
       std::vector<ParserSymbol> symbols;
       for (size_t i = 0; i < dominantMatch->matchingSymbolCount; i++) {
         symbols.push_back(std::move(stack.back()));
@@ -293,10 +324,10 @@ std::unique_ptr<AstNode> Parser::parse() {
       std::reverse(symbols.begin(), symbols.end());
       stack.push_back(dominantMatch->rule.reduce(symbols));
     } else if (dominantMatch->shouldShift) {
-      lastShifted = lookahead;
       stack.push_back(ParserSymbol{lookahead.type, lookahead.value,
                                    lookahead.line, lookahead.column});
       lookahead = lexer.nextToken();
+      lastSymbolType = lookahead.type;
     }
     printStack(stack);
   }

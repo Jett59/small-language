@@ -1,2 +1,3 @@
-let example = "example";
-mut answer = 42;
+let doit = fn(a: i32, b: bool)-> nil {
+    let abc = 123;
+};

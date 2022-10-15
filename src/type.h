@@ -16,9 +16,13 @@ public:
 struct NameAndType {
   std::string name;
   std::unique_ptr<Type> type;
+
+  NameAndType(std::string name, std::unique_ptr<Type> type)
+      : name(std::move(name)), type(std::move(type)) {}
 };
 
 enum class PrimitiveType {
+  NIL,
   I8,
   I16,
   I32,

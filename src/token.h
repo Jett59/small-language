@@ -18,6 +18,7 @@ enum class TokenType {
   ELSE,
   WHILE,
   FOR,
+  NIL,
   I8,
   I16,
   I32,
@@ -53,6 +54,7 @@ enum class TokenType {
   RIGHT_BRACE,
   LEFT_BRACKET,
   RIGHT_BRACKET,
+  ARROW,
 };
 
 struct Token {
@@ -90,6 +92,8 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "while";
   case TokenType::FOR:
     return "for";
+    case TokenType::NIL:
+    return "nil";
   case TokenType::I8:
     return "i8";
   case TokenType::I16:
@@ -160,6 +164,8 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "[";
   case TokenType::RIGHT_BRACKET:
     return "]";
+    case TokenType::ARROW:
+    return "->";
   }
   return "unknown";
 }
