@@ -378,7 +378,8 @@ canContinueParsingAfterReduction(const std::vector<ParserSymbol> &stack,
   testStack.resize(testStack.size() - match.matchingSymbolCount);
   testStack.push_back({match.rule.type});
   for (const auto &rule : parserRules) {
-    if (findSymbolMatch(testStack, rule, lookahead)) {
+    auto match = findSymbolMatch(testStack, rule, lookahead);
+    if (match && match->matchingSymbolCount > 0) {
       return true;
     }
   }
@@ -408,15 +409,18 @@ std::unique_ptr<AstNode> Parser::parse() {
           match.rule.precedence > dominantMatch->rule.precedence) {
         if (match.canReduce &&
             match.rule.type != NonTerminal::COMPILATION_UNIT) {
-          if (canContinueParsingAfterReduction(stack, match, lookahead)) {
-            dominantMatch = &match;
-          }
+          dominantMatch = &match;
         } else {
           dominantMatch = &match;
         }
       } else if (match.matchingSymbolCount > 0 && dominantMatch &&
                  dominantMatch->rule.precedence == match.rule.precedence) {
         if (match.canReduce && dominantMatch->canReduce) {
+          if (!canContinueParsingAfterReduction(stack, *dominantMatch,
+                                                lookahead)) {
+            dominantMatch = &match;
+            continue;
+          }
           bool isValidReduction =
               canContinueParsingAfterReduction(stack, match, lookahead);
           if (isValidReduction) {
@@ -465,7 +469,7 @@ std::unique_ptr<AstNode> Parser::parse() {
       lookahead = lexer.nextToken();
       lastSymbolType = lookahead.type;
     }
-    printStack(stack);
+    //printStack(stack);
   }
   return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
 }

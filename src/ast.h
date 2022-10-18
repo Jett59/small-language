@@ -18,6 +18,7 @@ enum class AstNodeType {
   FUNCTION,
   BINARY_OPERATOR,
   NIL,
+  IF_STATEMENT,
 };
 class AstNode {
 public:
@@ -133,6 +134,17 @@ public:
 class NilNode : public AstNode {
 public:
   NilNode() : AstNode(AstNodeType::NIL) {}
+};
+class IfStatementNode : public AstNode {
+public:
+  std::unique_ptr<AstNode> condition;
+  std::vector<std::unique_ptr<AstNode>> thenBody;
+  std::vector<std::unique_ptr<AstNode>> elseBody;
+  IfStatementNode(std::unique_ptr<AstNode> condition,
+                  std::vector<std::unique_ptr<AstNode>> thenBody,
+                  std::vector<std::unique_ptr<AstNode>> elseBody = {})
+      : AstNode(AstNodeType::IF_STATEMENT), condition(std::move(condition)),
+        thenBody(std::move(thenBody)), elseBody(std::move(elseBody)) {}
 };
 } // namespace sl
 
