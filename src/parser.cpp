@@ -156,13 +156,15 @@ binaryOperatorRule(SymbolType symbol, Precedence precedence,
       });
 }
 
-template <size_t index>
+template <size_t index, NonTerminal type>
 static ParserRule
-restructureParserRule(NonTerminal type,
-                      const std::vector<SymbolType> &symbols) {
-  return ParserRule{type, symbols, Precedence::DEFAULT, Associativity::DEFAULT,
+restructureParserRule(const std::vector<SymbolType> &symbols,
+                      Precedence precedence = Precedence::DEFAULT) {
+  return ParserRule{type, symbols, precedence, Associativity::DEFAULT,
                     [](std::vector<ParserSymbol> &symbols) {
-                      return std::move(symbols[index]);
+                      auto symbol = std::move(symbols[index]);
+                      symbol.type = type;
+                      return std::move(symbol);
                     }};
 }
 
@@ -187,6 +189,8 @@ static ParserRule parserRules[] = {
                simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
                              IndexAndType<1, std::string>, IndexAndType<3>,
                              IndexAndType<0, std::string>>),
+    restructureParserRule<0, NonTerminal::STATEMENT>(
+        {NonTerminal::EXPRESSION, TokenType::SEMICOLON}, Precedence::LOWEST),
     parserRule(NonTerminal::STATEMENT,
                {TokenType::MUT, TokenType::IDENTIFIER, TokenType::EQUALS,
                 NonTerminal::EXPRESSION, TokenType::SEMICOLON},
@@ -194,9 +198,9 @@ static ParserRule parserRules[] = {
                simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
                              IndexAndType<1, std::string>, IndexAndType<3>,
                              IndexAndType<0, std::string>>),
-    restructureParserRule<1>(NonTerminal::EXPRESSION,
-                             {TokenType::LEFT_PAREN, NonTerminal::EXPRESSION,
-                              TokenType::RIGHT_PAREN}),
+    restructureParserRule<1, NonTerminal::EXPRESSION>({TokenType::LEFT_PAREN,
+                                                       NonTerminal::EXPRESSION,
+                                                       TokenType::RIGHT_PAREN}),
     parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER},
                Precedence::DEFAULT, Associativity::DEFAULT,
                simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
@@ -299,7 +303,7 @@ static void printStack(std::vector<ParserSymbol> &stack) {
   std::cout << std::endl;
 }
 
-void printRule(const ParserRule &rule) {
+static void printRule(const ParserRule &rule) {
   for (auto &symbol : rule.symbols) {
     std::cout << " ";
     std::cout << symbolTypeToString(symbol);
@@ -307,8 +311,9 @@ void printRule(const ParserRule &rule) {
   std::cout << " -> " << nonTerminalToString(rule.type) << std::endl;
 }
 
-size_t getMatchingSymbolCount(const std::vector<ParserSymbol> &stack,
-                              const ParserRule &rule, size_t skipInitial = 0) {
+static size_t getMatchingSymbolCount(const std::vector<ParserSymbol> &stack,
+                                     const ParserRule &rule,
+                                     size_t skipInitial = 0) {
   size_t initialStackIndex =
       (stack.size() > rule.symbols.size() ? stack.size() - rule.symbols.size()
                                           : 0) +
