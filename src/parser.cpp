@@ -23,8 +23,11 @@ struct ParserSymbol {
 enum class Precedence {
   LOWEST,
   DEFAULT,
-  // For things like the STATEMENT_LIST which require precedence to specify that
-  // the list initializer should not be used if appending is an option.
+  DEFINITION, // To avoid conflicts with expression statements (E.G. is
+  // let x = 7;
+  //  Parsed as let x = STATEMENT or simply STATEMENT)
+  //  For things like the STATEMENT_LIST which require precedence to specify
+  //  that the list initializer should not be used if appending is an option.
   LIST_INITIALIZE,
   LIST_APPEND,
   // Operators
@@ -168,13 +171,19 @@ restructureParserRule(const std::vector<SymbolType> &symbols,
                     }};
 }
 
+template <NonTerminal type, typename NodeClass, typename... symbolIndices>
+ParserRule simpleRule(std::vector<SymbolType> symbols,
+                      Precedence precedence = Precedence::DEFAULT,
+                      Associativity associativity = Associativity::DEFAULT) {
+  return parserRule(type, symbols, precedence, associativity,
+                    simpleReducer<type, NodeClass, symbolIndices...>);
+}
+
 static ParserRule parserRules[] = {
-    parserRule(
-        NonTerminal::COMPILATION_UNIT,
+    simpleRule<NonTerminal::COMPILATION_UNIT, CompilationUnitNode,
+               IndexAndType<0, std::vector<std::unique_ptr<AstNode>>>>(
         {NonTerminal::STATEMENT_LIST, TokenType::END}, Precedence::DEFAULT,
-        Associativity::DEFAULT,
-        simpleReducer<NonTerminal::COMPILATION_UNIT, CompilationUnitNode,
-                      IndexAndType<0, std::vector<std::unique_ptr<AstNode>>>>),
+        Associativity::DEFAULT),
     parserRule(NonTerminal::STATEMENT_LIST, {NonTerminal::STATEMENT},
                Precedence::LIST_INITIALIZE, Associativity::DEFAULT,
                listReducer<NonTerminal::STATEMENT_LIST, AstNode, -1, 0>),
@@ -182,37 +191,32 @@ static ParserRule parserRules[] = {
                {NonTerminal::STATEMENT_LIST, NonTerminal::STATEMENT},
                Precedence::LIST_APPEND, Associativity::DEFAULT,
                listReducer<NonTerminal::STATEMENT_LIST, AstNode, 0, 1>),
-    parserRule(NonTerminal::STATEMENT,
-               {TokenType::LET, TokenType::IDENTIFIER, TokenType::EQUALS,
-                NonTerminal::EXPRESSION, TokenType::SEMICOLON},
-               Precedence::DEFAULT, Associativity::DEFAULT,
-               simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
-                             IndexAndType<1, std::string>, IndexAndType<3>,
-                             IndexAndType<0, std::string>>),
+    simpleRule<NonTerminal::STATEMENT, DefinitionNode,
+               IndexAndType<1, std::string>, IndexAndType<3>,
+               IndexAndType<0, std::string>>(
+        {TokenType::LET, TokenType::IDENTIFIER, TokenType::EQUALS,
+         NonTerminal::EXPRESSION, TokenType::SEMICOLON},
+        Precedence::DEFINITION, Associativity::DEFAULT),
+    simpleRule<NonTerminal::STATEMENT, DefinitionNode,
+               IndexAndType<1, std::string>, IndexAndType<3>,
+               IndexAndType<0, std::string>>(
+        {TokenType::MUT, TokenType::IDENTIFIER, TokenType::EQUALS,
+         NonTerminal::EXPRESSION, TokenType::SEMICOLON},
+        Precedence::DEFINITION, Associativity::DEFAULT),
     restructureParserRule<0, NonTerminal::STATEMENT>(
-        {NonTerminal::EXPRESSION, TokenType::SEMICOLON}, Precedence::LOWEST),
-    parserRule(NonTerminal::STATEMENT,
-               {TokenType::MUT, TokenType::IDENTIFIER, TokenType::EQUALS,
-                NonTerminal::EXPRESSION, TokenType::SEMICOLON},
-               Precedence::DEFAULT, Associativity::DEFAULT,
-               simpleReducer<NonTerminal::STATEMENT, DefinitionNode,
-                             IndexAndType<1, std::string>, IndexAndType<3>,
-                             IndexAndType<0, std::string>>),
+        {NonTerminal::EXPRESSION, TokenType::SEMICOLON}, Precedence::DEFAULT),
     restructureParserRule<1, NonTerminal::EXPRESSION>({TokenType::LEFT_PAREN,
                                                        NonTerminal::EXPRESSION,
                                                        TokenType::RIGHT_PAREN}),
-    parserRule(NonTerminal::EXPRESSION, {TokenType::INTEGER},
-               Precedence::DEFAULT, Associativity::DEFAULT,
-               simpleReducer<NonTerminal::EXPRESSION, IntegerLiteralNode,
-                             IndexAndType<0, std::string>>),
-    parserRule(NonTerminal::EXPRESSION, {TokenType::FLOAT}, Precedence::DEFAULT,
-               Associativity::DEFAULT,
-               simpleReducer<NonTerminal::EXPRESSION, FloatLiteralNode,
-                             IndexAndType<0, std::string>>),
-    parserRule(NonTerminal::EXPRESSION, {TokenType::STRING},
-               Precedence::DEFAULT, Associativity::DEFAULT,
-               simpleReducer<NonTerminal::EXPRESSION, StringLiteralNode,
-                             IndexAndType<0, std::string>>),
+    simpleRule<NonTerminal::EXPRESSION, IntegerLiteralNode,
+               IndexAndType<0, std::string>>(
+        {TokenType::INTEGER}, Precedence::DEFAULT, Associativity::DEFAULT),
+    simpleRule<NonTerminal::EXPRESSION, FloatLiteralNode,
+               IndexAndType<0, std::string>>(
+        {TokenType::FLOAT}, Precedence::DEFAULT, Associativity::DEFAULT),
+    simpleRule<NonTerminal::EXPRESSION, StringLiteralNode,
+               IndexAndType<0, std::string>>(
+        {TokenType::STRING}, Precedence::DEFAULT, Associativity::DEFAULT),
     primitiveTypeRule<PrimitiveType::NIL>(TokenType::NIL),
     primitiveTypeRule<PrimitiveType::I8>(TokenType::I8),
     primitiveTypeRule<PrimitiveType::I16>(TokenType::I16),
@@ -227,12 +231,11 @@ static ParserRule parserRules[] = {
     primitiveTypeRule<PrimitiveType::BOOL>(TokenType::BOOL),
     primitiveTypeRule<PrimitiveType::CHAR>(TokenType::CHAR),
     primitiveTypeRule<PrimitiveType::STRING>(TokenType::STRING_TYPE),
-    parserRule(NonTerminal::NAME_AND_TYPE,
-               {TokenType::IDENTIFIER, TokenType::COLON, NonTerminal::TYPE},
-               Precedence::DEFAULT, Associativity::DEFAULT,
-               simpleReducer<NonTerminal::NAME_AND_TYPE, NameAndType,
-                             IndexAndType<0, std::string>,
-                             IndexAndType<2, std::unique_ptr<Type>>>),
+    simpleRule<NonTerminal::NAME_AND_TYPE, NameAndType,
+               IndexAndType<0, std::string>,
+               IndexAndType<2, std::unique_ptr<Type>>>(
+        {TokenType::IDENTIFIER, TokenType::COLON, NonTerminal::TYPE},
+        Precedence::DEFAULT, Associativity::DEFAULT),
     parserRule(
         NonTerminal::NAME_AND_TYPE_LIST, {NonTerminal::NAME_AND_TYPE},
         Precedence::LOWEST, Associativity::DEFAULT,
@@ -242,17 +245,15 @@ static ParserRule parserRules[] = {
                 NonTerminal::NAME_AND_TYPE},
                Precedence::DEFAULT, Associativity::DEFAULT,
                listReducer<NonTerminal::NAME_AND_TYPE_LIST, NameAndType, 0, 2>),
-    parserRule(NonTerminal::EXPRESSION,
-               {TokenType::FN, TokenType::LEFT_PAREN,
-                NonTerminal::NAME_AND_TYPE_LIST, TokenType::RIGHT_PAREN,
-                TokenType::ARROW, NonTerminal::TYPE, TokenType::LEFT_BRACE,
-                NonTerminal::STATEMENT_LIST, TokenType::RIGHT_BRACE},
-               Precedence::DEFAULT, Associativity::DEFAULT,
-               simpleReducer<
-                   NonTerminal::EXPRESSION, FunctionNode,
-                   IndexAndType<5, std::unique_ptr<Type>>,
-                   IndexAndType<2, std::vector<std::unique_ptr<NameAndType>>>,
-                   IndexAndType<7, std::vector<std::unique_ptr<AstNode>>>>),
+    simpleRule<NonTerminal::EXPRESSION, FunctionNode,
+               IndexAndType<5, std::unique_ptr<Type>>,
+               IndexAndType<2, std::vector<std::unique_ptr<NameAndType>>>,
+               IndexAndType<7, std::vector<std::unique_ptr<AstNode>>>>(
+        {TokenType::FN, TokenType::LEFT_PAREN, NonTerminal::NAME_AND_TYPE_LIST,
+         TokenType::RIGHT_PAREN, TokenType::ARROW, NonTerminal::TYPE,
+         TokenType::LEFT_BRACE, NonTerminal::STATEMENT_LIST,
+         TokenType::RIGHT_BRACE},
+        Precedence::DEFAULT, Associativity::DEFAULT),
     binaryOperatorRule<BinaryOperatorType::ADD>(TokenType::PLUS,
                                                 Precedence::SUM),
     binaryOperatorRule<BinaryOperatorType::SUBTRACT>(TokenType::MINUS,
@@ -283,9 +284,8 @@ static ParserRule parserRules[] = {
                                                         Precedence::BITWISE),
     binaryOperatorRule<BinaryOperatorType::ASSIGN>(
         TokenType::EQUALS, Precedence::ASSIGNMENT, Associativity::RIGHT),
-    parserRule(NonTerminal::EXPRESSION, {TokenType::NIL}, Precedence::DEFAULT,
-               Associativity::DEFAULT,
-               simpleReducer<NonTerminal::EXPRESSION, NilNode>),
+    simpleRule<NonTerminal::EXPRESSION, NilNode>(
+        {TokenType::NIL}, Precedence::DEFAULT, Associativity::DEFAULT),
 };
 
 struct RuleMatch {
@@ -469,7 +469,7 @@ std::unique_ptr<AstNode> Parser::parse() {
       lookahead = lexer.nextToken();
       lastSymbolType = lookahead.type;
     }
-    //printStack(stack);
+    printStack(stack);
   }
   return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
 }
