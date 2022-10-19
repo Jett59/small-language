@@ -286,6 +286,10 @@ static ParserRule parserRules[] = {
         TokenType::EQUALS, Precedence::ASSIGNMENT, Associativity::RIGHT),
     simpleRule<NonTerminal::EXPRESSION, NilNode>(
         {TokenType::NIL}, Precedence::DEFAULT, Associativity::DEFAULT),
+    simpleRule<NonTerminal::STATEMENT, IfStatementNode, IndexAndType<1>,
+               IndexAndType<3, std::vector<std::unique_ptr<AstNode>>>>(
+        {TokenType::IF, NonTerminal::EXPRESSION, TokenType::LEFT_BRACE,
+         NonTerminal::STATEMENT_LIST, TokenType::RIGHT_BRACE})
 };
 
 struct RuleMatch {
@@ -469,7 +473,7 @@ std::unique_ptr<AstNode> Parser::parse() {
       lookahead = lexer.nextToken();
       lastSymbolType = lookahead.type;
     }
-    printStack(stack);
+    // printStack(stack);
   }
   return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
 }
