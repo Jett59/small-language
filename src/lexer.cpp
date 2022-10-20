@@ -99,7 +99,12 @@ static std::optional<Token> getString(Lexer &lexer) {
       result += c;
     }
   } while (c != '"');
-  return Token{.type = TokenType::STRING, .value = result};
+  return Token{
+      .type = TokenType::STRING,
+      .value = result.substr(
+          1,
+          result.length() -
+              2)}; // -2 because it is the length which is two characters less.
 }
 
 using TokenGetter = std::optional<Token> (*)(Lexer &);
@@ -143,6 +148,8 @@ TokenGetter tokenGetters[] = {
     keywordTokenGetter<TokenType::ELSE, "else">,
     keywordTokenGetter<TokenType::WHILE, "while">,
     keywordTokenGetter<TokenType::FOR, "for">,
+    keywordTokenGetter<TokenType::BOOL_LITERAL, "true">,
+    keywordTokenGetter<TokenType::BOOL_LITERAL, "false">,
     keywordTokenGetter<TokenType::NIL, "nil">,
     keywordTokenGetter<TokenType::I8, "i8">,
     keywordTokenGetter<TokenType::I16, "i16">,

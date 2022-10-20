@@ -26,6 +26,8 @@ public:
   AstNodeType type;
   AstNode(AstNodeType type) : type(type) {}
   virtual ~AstNode() = default;
+
+  virtual std::string toString() const = 0;
 };
 class CompilationUnitNode : public AstNode {
 public:
@@ -33,6 +35,8 @@ public:
   CompilationUnitNode(std::vector<std::unique_ptr<AstNode>> definitions)
       : AstNode(AstNodeType::COMPILATION_UNIT),
         definitions(std::move(definitions)) {}
+
+  std::string toString() const override;
 };
 class DefinitionNode : public AstNode {
 public:
@@ -44,6 +48,8 @@ public:
       : AstNode(AstNodeType::DEFINITION), name(std::move(name)),
         initializer(std::move(initializer)),
         constant(declarationKeyword == "let") {}
+
+  std::string toString() const override;
 };
 class IntegerLiteralNode : public AstNode {
 public:
@@ -52,6 +58,8 @@ public:
       : AstNode(AstNodeType::INTEGER_LITERAL), value(value) {}
   IntegerLiteralNode(const std::string &value)
       : AstNode(AstNodeType::INTEGER_LITERAL), value(std::stoll(value)) {}
+
+  std::string toString() const override;
 };
 class FloatLiteralNode : public AstNode {
 public:
@@ -60,12 +68,16 @@ public:
       : AstNode(AstNodeType::FLOAT_LITERAL), value(value) {}
   FloatLiteralNode(const std::string &value)
       : AstNode(AstNodeType::FLOAT_LITERAL), value(std::stod(value)) {}
+
+  std::string toString() const override;
 };
 class StringLiteralNode : public AstNode {
 public:
   std::string value;
   StringLiteralNode(std::string value)
       : AstNode(AstNodeType::STRING_LITERAL), value(std::move(value)) {}
+
+  std::string toString() const override;
 };
 class FunctionNode : public AstNode {
 public:
@@ -77,6 +89,8 @@ public:
                std::vector<std::unique_ptr<AstNode>> body)
       : AstNode(AstNodeType::FUNCTION), returnType(std::move(returnType)),
         parameters(std::move(parameters)), body(std::move(body)) {}
+
+  std::string toString() const override;
 };
 enum class BinaryOperatorType {
   ADD,
@@ -131,10 +145,14 @@ public:
                      std::unique_ptr<AstNode> right)
       : AstNode(AstNodeType::BINARY_OPERATOR), operatorType(operatorType),
         left(std::move(left)), right(std::move(right)) {}
+
+  std::string toString() const override;
 };
 class NilNode : public AstNode {
 public:
   NilNode() : AstNode(AstNodeType::NIL) {}
+
+  std::string toString() const override;
 };
 class IfStatementNode : public AstNode {
 public:
@@ -146,12 +164,16 @@ public:
                   std::vector<std::unique_ptr<AstNode>> elseBody = {})
       : AstNode(AstNodeType::IF_STATEMENT), condition(std::move(condition)),
         thenBody(std::move(thenBody)), elseBody(std::move(elseBody)) {}
+
+  std::string toString() const override;
 };
 class VariableReferenceNode : public AstNode {
 public:
   std::string name;
   VariableReferenceNode(std::string name)
       : AstNode(AstNodeType::VARIABLE_REFERENCE), name(std::move(name)) {}
+
+  std::string toString() const override;
 };
 } // namespace sl
 

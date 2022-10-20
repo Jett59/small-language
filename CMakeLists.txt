@@ -15,4 +15,6 @@ add_executable(sl
 src/main.cpp
 src/lexer.cpp
 src/parser.cpp
+src/ast.cpp
+src/type.cpp
 )

@@ -11,6 +11,7 @@ enum class TokenType {
   INTEGER,
   FLOAT,
   STRING,
+  BOOL_LITERAL,
   LET,
   MUT,
   FN,
@@ -86,6 +87,8 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "float";
   case TokenType::STRING:
     return "string";
+  case TokenType::BOOL_LITERAL:
+    return "bool literal";
   case TokenType::LET:
     return "let";
   case TokenType::MUT:

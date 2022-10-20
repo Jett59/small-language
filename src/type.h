@@ -1,6 +1,7 @@
 #ifndef SL_TYPE_H
 #define SL_TYPE_H
 
+#include <map>
 #include <memory>
 #include <string>
 
@@ -11,6 +12,8 @@ public:
   TypeType type;
   Type(TypeType type) : type(type) {}
   virtual ~Type() = default;
+
+  virtual std::string toString() const = 0;
 };
 
 struct NameAndType {
@@ -39,11 +42,23 @@ enum class PrimitiveType {
   CHAR,
   STRING,
 };
+static std::map<PrimitiveType, std::string> primitiveTypeToString = {
+    {PrimitiveType::NIL, "nil"},   {PrimitiveType::I8, "i8"},
+    {PrimitiveType::I16, "i16"},   {PrimitiveType::I32, "i32"},
+    {PrimitiveType::I64, "i64"},   {PrimitiveType::IPTR, "iptr"},
+    {PrimitiveType::U8, "u8"},     {PrimitiveType::U16, "u16"},
+    {PrimitiveType::U32, "u32"},   {PrimitiveType::U64, "u64"},
+    {PrimitiveType::UPTR, "uptr"}, {PrimitiveType::F32, "f32"},
+    {PrimitiveType::F64, "f64"},   {PrimitiveType::BOOL, "bool"},
+    {PrimitiveType::CHAR, "char"}, {PrimitiveType::STRING, "string"},
+};
 class PrimitiveTypeNode : public Type {
 public:
   PrimitiveType primitiveType;
   PrimitiveTypeNode(PrimitiveType primitiveType)
       : Type(TypeType::PRIMITIVE), primitiveType(primitiveType) {}
+
+  std::string toString() const override;
 };
 } // namespace sl
 
