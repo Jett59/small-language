@@ -19,6 +19,7 @@ enum class AstNodeType {
   BINARY_OPERATOR,
   NIL,
   IF_STATEMENT,
+  VARIABLE_REFERENCE,
 };
 class AstNode {
 public:
@@ -145,6 +146,12 @@ public:
                   std::vector<std::unique_ptr<AstNode>> elseBody = {})
       : AstNode(AstNodeType::IF_STATEMENT), condition(std::move(condition)),
         thenBody(std::move(thenBody)), elseBody(std::move(elseBody)) {}
+};
+class VariableReferenceNode : public AstNode {
+public:
+  std::string name;
+  VariableReferenceNode(std::string name)
+      : AstNode(AstNodeType::VARIABLE_REFERENCE), name(std::move(name)) {}
 };
 } // namespace sl
 

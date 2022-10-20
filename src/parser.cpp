@@ -10,10 +10,12 @@ using std::string_literals::operator""s;
 
 using SymbolType = std::variant<TokenType, NonTerminal>;
 
+using AstNodePointer = std::unique_ptr<AstNode>;
+using AstNodeList = std::vector<AstNodePointer>;
+
 struct ParserSymbol {
   SymbolType type;
-  std::variant<std::nullptr_t, std::unique_ptr<AstNode>,
-               std::vector<std::unique_ptr<AstNode>>, std::string,
+  std::variant<std::nullptr_t, AstNodePointer, AstNodeList, std::string,
                std::unique_ptr<Type>, std::unique_ptr<NameAndType>,
                std::vector<std::unique_ptr<NameAndType>>>
       value;
@@ -79,7 +81,7 @@ parserRule(NonTerminal type, std::vector<SymbolType> symbols,
   return {type, symbols, precedence, associativity, reduce};
 }
 
-template <int i, typename T = std::unique_ptr<AstNode>> struct IndexAndType {
+template <int i, typename T = AstNodePointer> struct IndexAndType {
   static constexpr int index = i;
   using Type = T;
 };
@@ -151,10 +153,8 @@ binaryOperatorRule(SymbolType symbol, Precedence precedence,
         return ParserSymbol{
             NonTerminal::EXPRESSION,
             std::make_unique<BinaryOperatorNode>(
-                type,
-                std::get<std::unique_ptr<AstNode>>(std::move(symbols[0].value)),
-                std::get<std::unique_ptr<AstNode>>(
-                    std::move(symbols[2].value))),
+                type, std::get<AstNodePointer>(std::move(symbols[0].value)),
+                std::get<AstNodePointer>(std::move(symbols[2].value))),
         };
       });
 }
@@ -181,7 +181,7 @@ ParserRule simpleRule(std::vector<SymbolType> symbols,
 
 static ParserRule parserRules[] = {
     simpleRule<NonTerminal::COMPILATION_UNIT, CompilationUnitNode,
-               IndexAndType<0, std::vector<std::unique_ptr<AstNode>>>>(
+               IndexAndType<0, AstNodeList>>(
         {NonTerminal::STATEMENT_LIST, TokenType::END}, Precedence::DEFAULT,
         Associativity::DEFAULT),
     parserRule(NonTerminal::STATEMENT_LIST, {NonTerminal::STATEMENT},
@@ -248,7 +248,7 @@ static ParserRule parserRules[] = {
     simpleRule<NonTerminal::EXPRESSION, FunctionNode,
                IndexAndType<5, std::unique_ptr<Type>>,
                IndexAndType<2, std::vector<std::unique_ptr<NameAndType>>>,
-               IndexAndType<7, std::vector<std::unique_ptr<AstNode>>>>(
+               IndexAndType<7, AstNodeList>>(
         {TokenType::FN, TokenType::LEFT_PAREN, NonTerminal::NAME_AND_TYPE_LIST,
          TokenType::RIGHT_PAREN, TokenType::ARROW, NonTerminal::TYPE,
          TokenType::LEFT_BRACE, NonTerminal::STATEMENT_LIST,
@@ -287,10 +287,11 @@ static ParserRule parserRules[] = {
     simpleRule<NonTerminal::EXPRESSION, NilNode>(
         {TokenType::NIL}, Precedence::DEFAULT, Associativity::DEFAULT),
     simpleRule<NonTerminal::STATEMENT, IfStatementNode, IndexAndType<1>,
-               IndexAndType<3, std::vector<std::unique_ptr<AstNode>>>>(
+               IndexAndType<3, AstNodeList>>(
         {TokenType::IF, NonTerminal::EXPRESSION, TokenType::LEFT_BRACE,
-         NonTerminal::STATEMENT_LIST, TokenType::RIGHT_BRACE})
-};
+         NonTerminal::STATEMENT_LIST, TokenType::RIGHT_BRACE}),
+    simpleRule<NonTerminal::EXPRESSION, VariableReferenceNode,
+               IndexAndType<0, std::string>>({TokenType::IDENTIFIER})};
 
 struct RuleMatch {
   bool canReduce;
@@ -390,7 +391,7 @@ canContinueParsingAfterReduction(const std::vector<ParserSymbol> &stack,
   return false;
 }
 
-std::unique_ptr<AstNode> Parser::parse() {
+AstNodePointer Parser::parse() {
   std::vector<ParserSymbol> stack;
   Token lookahead = lexer.nextToken();
   SymbolType lastSymbolType; // Lookahead token type for shift, non-terminal for
@@ -437,20 +438,27 @@ std::unique_ptr<AstNode> Parser::parse() {
             throw std::logic_error("Ambiguous grammar");
           }
         } else if (dominantMatch->canReduce != match.canReduce) {
-          std::cout << "Shift/reduce conflict: " << std::endl;
-          printStack(stack);
-          auto &reducingRule =
-              dominantMatch->canReduce ? dominantMatch->rule : match.rule;
-          std::cout << "Reduction: ";
-          printRule(reducingRule);
-          std::cout << "Shift: ";
-          std::cout << tokenTypeToString(lookahead.type) << std::endl;
-          std::cout << "  To match this rule:" << std::endl;
-          auto &shiftingRule =
-              dominantMatch->canReduce ? match.rule : dominantMatch->rule;
-          std::cout << "  ";
-          printRule(shiftingRule);
-          throw std::logic_error("Ambiguous grammar");
+          if (dominantMatch->canReduce &&
+              !canContinueParsingAfterReduction(stack, *dominantMatch,
+                                                lookahead)) {
+            dominantMatch = &match;
+          } else if (!(match.canReduce && !canContinueParsingAfterReduction(
+                                              stack, match, lookahead))) {
+            std::cout << "Shift/reduce conflict: " << std::endl;
+            printStack(stack);
+            auto &reducingRule =
+                dominantMatch->canReduce ? dominantMatch->rule : match.rule;
+            std::cout << "Reduction: ";
+            printRule(reducingRule);
+            std::cout << "Shift: ";
+            std::cout << tokenTypeToString(lookahead.type) << std::endl;
+            std::cout << "  To match this rule:" << std::endl;
+            auto &shiftingRule =
+                dominantMatch->canReduce ? match.rule : dominantMatch->rule;
+            std::cout << "  ";
+            printRule(shiftingRule);
+            throw std::logic_error("Ambiguous grammar");
+          }
         }
       }
     }
@@ -475,6 +483,6 @@ std::unique_ptr<AstNode> Parser::parse() {
     }
     // printStack(stack);
   }
-  return std::move(std::get<std::unique_ptr<AstNode>>(stack[0].value));
+  return std::move(std::get<AstNodePointer>(stack[0].value));
 }
 } // namespace sl

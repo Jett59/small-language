@@ -1,6 +1,6 @@
 let main = fn (a: i32) -> nil {
-    if 123 == 456 {
+    if "hello" {
         let things = nil;
-        nil = "hello";
+        things = things + nil;
     }
 };
