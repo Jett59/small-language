@@ -145,7 +145,7 @@ static ParserRule primitiveTypeRule(SymbolType symbol) {
 template <BinaryOperatorType type>
 static ParserRule
 binaryOperatorRule(SymbolType symbol, Precedence precedence,
-                   Associativity associativity = Associativity::DEFAULT) {
+                   Associativity associativity = Associativity::LEFT) {
   return parserRule(
       NonTerminal::EXPRESSION,
       {NonTerminal::EXPRESSION, symbol, NonTerminal::EXPRESSION}, precedence,
@@ -438,6 +438,15 @@ AstNodePointer Parser::parse() {
             throw std::logic_error("Ambiguous grammar");
           }
         } else if (dominantMatch->canReduce != match.canReduce) {
+          if (dominantMatch->rule.associativity == match.rule.associativity) {
+            if (match.rule.associativity == Associativity::LEFT) {
+              dominantMatch = match.canReduce ? &match : dominantMatch;
+              continue;
+            } else if (match.rule.associativity == Associativity::RIGHT) {
+              dominantMatch = match.shouldShift ? &match : dominantMatch;
+              continue;
+            }
+          }
           if (dominantMatch->canReduce &&
               !canContinueParsingAfterReduction(stack, *dominantMatch,
                                                 lookahead)) {

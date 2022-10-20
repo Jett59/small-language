@@ -3,4 +3,5 @@ let main = fn (a: i32, b: bool) -> nil {
         let things = nil;
         things = things + nil;
     }
+    1+2+3-4;
 };

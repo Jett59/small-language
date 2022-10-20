@@ -6,7 +6,7 @@
 #include <string>
 
 namespace sl {
-enum class TypeType { PRIMITIVE };
+enum class TypeType { PRIMITIVE, REFERENCE };
 class Type {
 public:
   TypeType type;
@@ -57,6 +57,16 @@ public:
   PrimitiveType primitiveType;
   PrimitiveTypeNode(PrimitiveType primitiveType)
       : Type(TypeType::PRIMITIVE), primitiveType(primitiveType) {}
+
+  std::string toString() const override;
+};
+class ReferenceTypeNode : public Type {
+public:
+  std::unique_ptr<Type> type;
+  bool constant;
+
+  ReferenceTypeNode(std::unique_ptr<Type> type, bool constant)
+      : Type(TypeType::REFERENCE), type(std::move(type)), constant(constant) {}
 
   std::string toString() const override;
 };
