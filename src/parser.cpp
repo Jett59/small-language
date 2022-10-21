@@ -217,6 +217,9 @@ static ParserRule parserRules[] = {
     simpleRule<NonTerminal::EXPRESSION, StringLiteralNode,
                IndexAndType<0, std::string>>(
         {TokenType::STRING}, Precedence::DEFAULT, Associativity::DEFAULT),
+        simpleRule<NonTerminal::EXPRESSION, BoolLiteralNode,
+               IndexAndType<0, std::string>>(
+        {TokenType::BOOL_LITERAL}),
     primitiveTypeRule<PrimitiveType::NIL>(TokenType::NIL),
     primitiveTypeRule<PrimitiveType::I8>(TokenType::I8),
     primitiveTypeRule<PrimitiveType::I16>(TokenType::I16),

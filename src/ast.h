@@ -4,7 +4,10 @@
 #include "type.h"
 #include <cstdlib>
 #include <map>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -15,19 +18,27 @@ enum class AstNodeType {
   INTEGER_LITERAL,
   FLOAT_LITERAL,
   STRING_LITERAL,
+  BOOL_LITERAL,
   FUNCTION,
   BINARY_OPERATOR,
   NIL,
   IF_STATEMENT,
   VARIABLE_REFERENCE,
 };
+
+// Forward-declare to allow for use in the symbol table.
+class DefinitionNode;
+
 class AstNode {
 public:
   AstNodeType type;
+  std::optional<std::unique_ptr<Type>> valueType;
   AstNode(AstNodeType type) : type(type) {}
   virtual ~AstNode() = default;
 
   virtual std::string toString() const = 0;
+
+  virtual void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) = 0;
 };
 class CompilationUnitNode : public AstNode {
 public:
@@ -37,6 +48,8 @@ public:
         definitions(std::move(definitions)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 class DefinitionNode : public AstNode {
 public:
@@ -50,7 +63,24 @@ public:
         constant(declarationKeyword == "let") {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
+static PrimitiveType getSmallestTypeThatContains(int64_t value) {
+  if (value >= std::numeric_limits<int8_t>::min() &&
+      value <= std::numeric_limits<int8_t>::max()) {
+    return PrimitiveType::I8;
+  } else if (value >= std::numeric_limits<int16_t>::min() &&
+             value <= std::numeric_limits<int16_t>::max()) {
+    return PrimitiveType::I16;
+  } else if (value >= std::numeric_limits<int32_t>::min() &&
+             value <= std::numeric_limits<int32_t>::max()) {
+    return PrimitiveType::I32;
+  } else {
+    return PrimitiveType::I64;
+  }
+}
+
 class IntegerLiteralNode : public AstNode {
 public:
   int64_t value;
@@ -60,6 +90,8 @@ public:
       : AstNode(AstNodeType::INTEGER_LITERAL), value(std::stoll(value)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 class FloatLiteralNode : public AstNode {
 public:
@@ -70,6 +102,8 @@ public:
       : AstNode(AstNodeType::FLOAT_LITERAL), value(std::stod(value)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 class StringLiteralNode : public AstNode {
 public:
@@ -78,6 +112,20 @@ public:
       : AstNode(AstNodeType::STRING_LITERAL), value(std::move(value)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
+};
+class BoolLiteralNode : public AstNode {
+public:
+  bool value;
+  BoolLiteralNode(bool value)
+      : AstNode(AstNodeType::BOOL_LITERAL), value(value) {}
+  BoolLiteralNode(const std::string &value)
+      : AstNode(AstNodeType::BOOL_LITERAL), value(value == "true") {}
+
+  std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 class FunctionNode : public AstNode {
 public:
@@ -91,6 +139,8 @@ public:
         parameters(std::move(parameters)), body(std::move(body)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 enum class BinaryOperatorType {
   ADD,
@@ -147,12 +197,16 @@ public:
         left(std::move(left)), right(std::move(right)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 class NilNode : public AstNode {
 public:
   NilNode() : AstNode(AstNodeType::NIL) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 class IfStatementNode : public AstNode {
 public:
@@ -166,6 +220,8 @@ public:
         thenBody(std::move(thenBody)), elseBody(std::move(elseBody)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 class VariableReferenceNode : public AstNode {
 public:
@@ -174,6 +230,8 @@ public:
       : AstNode(AstNodeType::VARIABLE_REFERENCE), name(std::move(name)) {}
 
   std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
 };
 } // namespace sl
 

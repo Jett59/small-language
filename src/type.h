@@ -4,9 +4,10 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace sl {
-enum class TypeType { PRIMITIVE, REFERENCE };
+enum class TypeType { PRIMITIVE, REFERENCE, FUNCTION };
 class Type {
 public:
   TypeType type;
@@ -14,6 +15,10 @@ public:
   virtual ~Type() = default;
 
   virtual std::string toString() const = 0;
+
+  virtual std::unique_ptr<Type> clone() const = 0;
+
+  virtual bool equals(const Type &other) const = 0;
 };
 
 struct NameAndType {
@@ -59,6 +64,10 @@ public:
       : Type(TypeType::PRIMITIVE), primitiveType(primitiveType) {}
 
   std::string toString() const override;
+
+  std::unique_ptr<Type> clone() const override;
+
+  bool equals(const Type &other) const override;
 };
 class ReferenceTypeNode : public Type {
 public:
@@ -69,6 +78,26 @@ public:
       : Type(TypeType::REFERENCE), type(std::move(type)), constant(constant) {}
 
   std::string toString() const override;
+
+  std::unique_ptr<Type> clone() const override;
+
+  bool equals(const Type &other) const override;
+};
+class FunctionTypeNode : public Type {
+public:
+  std::vector<std::unique_ptr<Type>> arguments;
+  std::unique_ptr<Type> returnType;
+
+  FunctionTypeNode(std::vector<std::unique_ptr<Type>> arguments,
+                   std::unique_ptr<Type> returnType)
+      : Type(TypeType::FUNCTION), arguments(std::move(arguments)),
+        returnType(std::move(returnType)) {}
+
+  std::string toString() const override;
+
+  std::unique_ptr<Type> clone() const override;
+
+  bool equals(const Type &other) const override;
 };
 } // namespace sl
 

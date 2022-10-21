@@ -1,7 +1,6 @@
-let main = fn (a: i32, b: bool) -> nil {
-    if "hello" {
-        let things = nil;
-        things = things + nil;
+let main = fn(a: i32) -> nil {
+    if 1 == 2 {
+        mut thingies = 7;
+        thingies = thingies + 8 * 9;
     }
-    1+2+3-4;
 };

@@ -58,9 +58,13 @@ int main(int argc, char **argv) {
     Lexer lexer(options.file, input);
     Parser parser(lexer);
     try {
-    auto ast = parser.parse();
-    std::cout << ast->toString() << std::endl;
-    }catch (std::exception &e) {
+      auto ast = parser.parse();
+      {
+        std::map<std::string, const DefinitionNode &> symbolTable;
+        ast->assignType(symbolTable);
+      }
+      std::cout << ast->toString() << std::endl;
+    } catch (std::exception &e) {
       std::cerr << e.what() << std::endl;
       exit(1);
     }
