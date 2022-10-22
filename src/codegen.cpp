@@ -143,8 +143,15 @@ static void codegenGlobalDefinition(const DefinitionNode &definition,
                                     SymbolTable &symbolTable) {
   Value *initializerValue = codegenExpression(
       *definition.initializer, context, module, initFunction, symbolTable);
+  if (isa<PointerType>(initializerValue->getType()) &&
+      !definition.valueType->get()->equals(
+          *definition.initializer->valueType->get())) {
+    initializerValue = initFunction.irBuilder.CreateLoad(
+        getLlvmType(**definition.valueType, context), initializerValue);
+  }
   // Determine if the initializer is a constant value.
   bool isConstantExpression = isa<Constant>(initializerValue);
+  std::cout << "Is constant expression: " << isConstantExpression << std::endl;
   GlobalVariable *globalVariable = new GlobalVariable(
       initializerValue->getType(), isConstantExpression && definition.constant,
       GlobalValue::InternalLinkage, nullptr, definition.name);
@@ -166,7 +173,9 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
         static_cast<const DefinitionNode &>(statement);
     Value *initializerValue = codegenExpression(
         *definition.initializer, context, module, function, symbolTable);
-    if (isa<PointerType>(initializerValue->getType())) {
+    if (isa<PointerType>(initializerValue->getType()) &&
+        !definition.valueType->get()->equals(
+            *definition.initializer->valueType->get())) {
       initializerValue = function.irBuilder.CreateLoad(
           getLlvmType(**statement.valueType, context), initializerValue);
     }
