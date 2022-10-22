@@ -3,6 +3,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
@@ -70,12 +71,16 @@ static llvm::Type *getLlvmType(const sl::Type &type, LLVMContext &context) {
   }
 }
 
+using SymbolTable = std::map<std::string, Value *>;
+
 static void codegenStatement(const AstNode &statement, LLVMContext &context,
-                             Module &module, FunctionContext &function);
+                             Module &module, FunctionContext &function,
+                             SymbolTable &symbolTable);
 
 static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
                                 Module &module,
-                                FunctionContext &currentFunction) {
+                                FunctionContext &currentFunction,
+                                SymbolTable &symbolTable) {
   switch (expression.type) {
   case AstNodeType::FUNCTION: {
     const FunctionNode &functionNode =
@@ -87,15 +92,27 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     BasicBlock *entryBlock = BasicBlock::Create(context, "entry", function);
     FunctionContext newFunctionContext{function, entryBlock,
                                        IRBuilder<>(entryBlock)};
+    SymbolTable newSymbolTable = symbolTable;
+    for (size_t i = 0; i < functionNode.parameters.size(); i++) {
+      const auto &parameter = functionNode.parameters[i];
+      newSymbolTable[parameter->name] = function->arg_begin() + i;
+    }
     for (const auto &statement : functionNode.body) {
-      codegenStatement(*statement, context, module, newFunctionContext);
+      codegenStatement(*statement, context, module, newFunctionContext,
+                       newSymbolTable);
     }
     if (PrimitiveTypeNode{PrimitiveType::NIL}.equals(
             *static_cast<const FunctionTypeNode &>(**functionNode.valueType)
                  .returnType)) {
       newFunctionContext.irBuilder.CreateRetVoid();
     }
+    verifyFunction(*function);
     return function;
+  }
+  case AstNodeType::VARIABLE_REFERENCE: {
+    const VariableReferenceNode &variableReferenceNode =
+        static_cast<const VariableReferenceNode &>(expression);
+    return symbolTable[variableReferenceNode.name];
   }
   case AstNodeType::INTEGER_LITERAL: {
     const IntegerLiteralNode &integerLiteralNode =
@@ -122,9 +139,10 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
 
 static void codegenGlobalDefinition(const DefinitionNode &definition,
                                     LLVMContext &context, Module &module,
-                                    FunctionContext &initFunction) {
-  Value *initializerValue =
-      codegenExpression(*definition.initializer, context, module, initFunction);
+                                    FunctionContext &initFunction,
+                                    SymbolTable &symbolTable) {
+  Value *initializerValue = codegenExpression(
+      *definition.initializer, context, module, initFunction, symbolTable);
   // Determine if the initializer is a constant value.
   bool isConstantExpression = isa<Constant>(initializerValue);
   GlobalVariable *globalVariable = new GlobalVariable(
@@ -136,16 +154,35 @@ static void codegenGlobalDefinition(const DefinitionNode &definition,
   } else {
     initFunction.irBuilder.CreateStore(initializerValue, globalVariable);
   }
+  symbolTable[definition.name] = globalVariable;
 }
 
 static void codegenStatement(const AstNode &statement, LLVMContext &context,
-                             Module &module, FunctionContext &function) {
+                             Module &module, FunctionContext &function,
+                             SymbolTable &symbolTable) {
   switch (statement.type) {
-  case AstNodeType::IF_STATEMENT: {
-    throw std::runtime_error("if statements not implemented");
+  case AstNodeType::DEFINITION: {
+    const DefinitionNode &definition =
+        static_cast<const DefinitionNode &>(statement);
+    Value *initializerValue = codegenExpression(
+        *definition.initializer, context, module, function, symbolTable);
+    if (isa<PointerType>(initializerValue->getType())) {
+      initializerValue = function.irBuilder.CreateLoad(
+          getLlvmType(**statement.valueType, context), initializerValue);
+    }
+    if (definition.constant) {
+      symbolTable[definition.name] = initializerValue;
+    } else {
+      BasicBlock &entryBlock = function.function->getEntryBlock();
+      IRBuilder<> irBuilder(&entryBlock, entryBlock.begin());
+      AllocaInst *alloca = irBuilder.CreateAlloca(initializerValue->getType());
+      function.irBuilder.CreateStore(initializerValue, alloca);
+      symbolTable[definition.name] = alloca;
+    }
+    break;
   }
   default:
-    codegenExpression(statement, context, module, function);
+    codegenExpression(statement, context, module, function, symbolTable);
   }
 }
 
@@ -168,17 +205,19 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
       IRBuilder<>(rawDefinitionsEntryBlock)};
   const CompilationUnitNode &compilationUnit =
       static_cast<const CompilationUnitNode &>(ast);
+  SymbolTable symbolTable;
   for (const auto &statement : compilationUnit.definitions) {
     if (statement->type != AstNodeType::DEFINITION) {
       codegenStatement(*statement, llvmContext, module,
-                       rawDefinitionsFunctionContext);
+                       rawDefinitionsFunctionContext, symbolTable);
     } else {
       codegenGlobalDefinition(static_cast<const DefinitionNode &>(*statement),
                               llvmContext, module,
-                              rawDefinitionsFunctionContext);
+                              rawDefinitionsFunctionContext, symbolTable);
     }
   }
   rawDefinitionsFunctionContext.irBuilder.CreateRetVoid();
+  verifyFunction(*rawDefinitionsFunction);
   std::string targetTriple;
   if (initialTargetTriple == "") {
     targetTriple = sys::getDefaultTargetTriple();
