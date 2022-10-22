@@ -10,6 +10,11 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+// Import for module print pass.
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils.h"
+#include "llvm/IR/IRPrintingPasses.h"
 #include <iostream>
 
 namespace sl {
@@ -182,7 +187,10 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
                                  **binaryOperatorNode.right->valueType, context,
                                  currentFunction);
     }
-    if (binaryOperatorNode.valueType->get()->type == TypeType::PRIMITIVE) {
+    if (binaryOperatorNode.operatorType == BinaryOperatorType::ASSIGN) {
+      return currentFunction.irBuilder.CreateStore(right, left);
+    } else if (binaryOperatorNode.valueType->get()->type ==
+               TypeType::PRIMITIVE) {
       PrimitiveType primitiveType = static_cast<const PrimitiveTypeNode &>(
                                         *binaryOperatorNode.valueType->get())
                                         .primitiveType;
@@ -190,8 +198,6 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
         throw std::runtime_error("Cannot perform binary operation on nil");
       }
       switch (binaryOperatorNode.operatorType) {
-      case BinaryOperatorType::ASSIGN:
-        return currentFunction.irBuilder.CreateStore(right, left);
       case BinaryOperatorType::ADD:
         return currentFunction.irBuilder.CreateAdd(left, right);
       case BinaryOperatorType::SUBTRACT:
@@ -279,6 +285,37 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     }
     break;
   }
+  case AstNodeType::IF_STATEMENT: {
+    const IfStatementNode &ifStatement =
+        static_cast<const IfStatementNode &>(statement);
+    Value *conditionValue = codegenExpression(*ifStatement.condition, context,
+                                              module, function, symbolTable);
+    conditionValue = decayPointer(conditionValue, context, function,
+                                  **ifStatement.condition->valueType);
+    BasicBlock *trueBranch =
+        BasicBlock::Create(context, "true", function.function);
+    BasicBlock *falseBranch =
+        BasicBlock::Create(context, "false", function.function);
+    BasicBlock *mergeBranch =
+        BasicBlock::Create(context, "merge", function.function);
+    function.irBuilder.CreateCondBr(conditionValue, trueBranch, falseBranch);
+    function.irBuilder.SetInsertPoint(trueBranch);
+    SymbolTable newSymbolTable = symbolTable;
+    for (const auto &statement : ifStatement.thenBody) {
+      codegenStatement(*statement, context, module, function, newSymbolTable);
+    }
+    function.irBuilder.CreateBr(mergeBranch);
+    trueBranch = function.irBuilder.GetInsertBlock();
+    function.irBuilder.SetInsertPoint(falseBranch);
+    newSymbolTable = symbolTable;
+    for (const auto &statement : ifStatement.elseBody) {
+      codegenStatement(*statement, context, module, function, newSymbolTable);
+    }
+    function.irBuilder.CreateBr(mergeBranch);
+    falseBranch = function.irBuilder.GetInsertBlock();
+    function.irBuilder.SetInsertPoint(mergeBranch);
+    break;
+  }
   default:
     codegenExpression(statement, context, module, function, symbolTable);
   }
@@ -346,11 +383,17 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
     throw std::runtime_error("Could not open file: " + ec.message());
   }
   legacy::PassManager pass;
+  pass.add(createPromoteMemoryToRegisterPass());
+  pass.add(createReassociatePass());
+  pass.add(createCFGSimplificationPass());
+  pass.add(createInstructionCombiningPass());
+  pass.add(createAggressiveDCEPass());
+  pass.add(createPrintModulePass(outs()));
   auto fileType = CGFT_AssemblyFile;
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
     throw std::runtime_error("TargetMachine can't emit a file of this type");
   }
   pass.run(module);
   dest.flush();
-  }
+}
 } // namespace sl

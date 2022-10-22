@@ -1,3 +1,6 @@
-let func = fn(a: i32) -> nil {
-    mut thingy = a * a + a / a + a % a;
+mut counter = false;
+let func = fn(a: i8) -> nil {
+    if counter {
+        counter = false;
+    }
 };

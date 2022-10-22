@@ -189,9 +189,10 @@ void IfStatementNode::assignType(
   if (!condition->valueType) {
     throw std::runtime_error("If condition has no type");
   }
-  if (condition->valueType->get()->type != TypeType::PRIMITIVE ||
-      static_cast<const PrimitiveTypeNode &>(*condition->valueType->get())
-              .primitiveType != PrimitiveType::BOOL) {
+  auto conditionType = decayReferenceType(condition->valueType->get()->clone());
+  if (conditionType->type != TypeType::PRIMITIVE ||
+      static_cast<const PrimitiveTypeNode &>(*conditionType).primitiveType !=
+          PrimitiveType::BOOL) {
     throw std::runtime_error("If condition is not a boolean");
   }
   for (auto &statement : thenBody) {
