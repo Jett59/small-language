@@ -1,3 +1,4 @@
+#include "codegen.h"
 #include "lexer.h"
 #include "parser.h"
 #include <fstream>
@@ -12,6 +13,7 @@ static void usage(char *program) {
 static void help(char *program) {
   usage(program);
   std::cout << "Options:" << std::endl;
+  std::cout << "-t, --target <triple>\t\tTarget triple" << std::endl;
   std::cout << "  -h, --help\t\tShow this help message" << std::endl;
   std::cout << "  -v, --version\t\tShow version information" << std::endl;
 }
@@ -24,6 +26,7 @@ struct Options {
   bool help;
   bool version;
   std::string file;
+  std::string target;
 
   Options(int argc, char **argv) {
     help = false;
@@ -35,6 +38,14 @@ struct Options {
         help = true;
       } else if (arg == "-v" || arg == "--version") {
         version = true;
+      }else if (arg == "-t" || arg == "--target") {
+        if (i + 1 < argc) {
+          target = argv[i + 1];
+          i++;
+        } else {
+          std::cerr << "Missing target triple" << std::endl;
+          exit(1);
+        }
       } else if (arg[0] == '-') {
         std::cerr << "Unknown option: " << arg << std::endl;
         usage(argv[0]);
@@ -63,7 +74,7 @@ int main(int argc, char **argv) {
         std::map<std::string, const DefinitionNode &> symbolTable;
         ast->assignType(symbolTable);
       }
-      std::cout << ast->toString() << std::endl;
+      codegen(*ast, options.target);
     } catch (std::exception &e) {
       std::cerr << e.what() << std::endl;
       exit(1);
