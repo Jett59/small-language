@@ -24,6 +24,7 @@ enum class AstNodeType {
   NIL,
   IF_STATEMENT,
   VARIABLE_REFERENCE,
+  CAST,
 };
 
 // Forward-declare to allow for use in the symbol table.
@@ -33,6 +34,7 @@ class AstNode {
 public:
   AstNodeType type;
   std::optional<std::unique_ptr<Type>> valueType;
+  int line = 0, column = 0;
   AstNode(AstNodeType type) : type(type) {}
   virtual ~AstNode() = default;
 
@@ -232,6 +234,18 @@ public:
   std::string name;
   VariableReferenceNode(std::string name)
       : AstNode(AstNodeType::VARIABLE_REFERENCE), name(std::move(name)) {}
+
+  std::string toString() const override;
+
+  void assignType(std::map<std::string, const DefinitionNode &> &symbolTable) override;
+};
+class CastNode : public AstNode {
+public:
+  std::unique_ptr<AstNode> value;
+  CastNode(std::unique_ptr<AstNode> value, std::unique_ptr<Type> type)
+      : AstNode(AstNodeType::CAST), value(std::move(value)) {
+    this->valueType = std::move(type);
+      }
 
   std::string toString() const override;
 

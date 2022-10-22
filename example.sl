@@ -1,6 +1,8 @@
-mut counter = false;
-let func = fn(a: i8) -> nil {
-    if counter {
-        counter = false;
+mut counter = 1 as i32;
+let func = fn(a: i32) -> nil {
+    if a == 7 {
+        counter = counter * a;
+    }else {
+        counter = counter % a;
     }
 };

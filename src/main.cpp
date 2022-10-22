@@ -1,6 +1,7 @@
 #include "codegen.h"
 #include "lexer.h"
 #include "parser.h"
+#include "error.h"
 #include <fstream>
 #include <iostream>
 
@@ -75,7 +76,10 @@ int main(int argc, char **argv) {
         ast->assignType(symbolTable);
       }
       codegen(*ast, options.target);
-    } catch (std::exception &e) {
+    } catch (const SlException &e) {
+      std::cerr << e.what() << std::endl;
+      exit(1);
+    }catch (const std::exception &e) {
       std::cerr << e.what() << std::endl;
       exit(1);
     }

@@ -12,28 +12,28 @@ char Lexer::readCharacter() {
         return '\0';
       }
     } while (c == '\r');
-    if (c == '\n') {
-      line++;
-      column = 1;
-    } else {
-      column++;
-    }
     buffer += c;
     bufferIndex++;
   } else {
     c = buffer[bufferIndex++];
   }
+  if (c == '\n') {
+    line++;
+    column = 1;
+  } else {
+    column++;
+  }
   return c;
 }
 void Lexer::unreadCharacter() {
   if (bufferIndex > 0) {
-    bufferIndex--;
     if (buffer[bufferIndex] == '\n') {
       line--;
       column = 1;
     } else {
       column--;
     }
+    bufferIndex--;
   }
 }
 static std::optional<Token> getIdentifier(Lexer &lexer) {
@@ -148,6 +148,7 @@ TokenGetter tokenGetters[] = {
     keywordTokenGetter<TokenType::ELSE, "else">,
     keywordTokenGetter<TokenType::WHILE, "while">,
     keywordTokenGetter<TokenType::FOR, "for">,
+    keywordTokenGetter<TokenType::AS, "as">,
     keywordTokenGetter<TokenType::BOOL_LITERAL, "true">,
     keywordTokenGetter<TokenType::BOOL_LITERAL, "false">,
     keywordTokenGetter<TokenType::NIL, "nil">,
@@ -212,8 +213,8 @@ Token Lexer::nextToken() {
   for (auto getter : tokenGetters) {
     auto token = getter(*this);
     if (token) {
-      buffer = buffer.substr(bufferIndex);
-      bufferIndex = 0;
+      //buffer = buffer.substr(bufferIndex);
+      //bufferIndex = 0;
       token->line = startLine;
       token->column = startColumn;
       return *token;

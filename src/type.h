@@ -47,6 +47,7 @@ enum class PrimitiveType {
   CHAR,
   STRING,
 };
+
 static inline bool isSigned(PrimitiveType type) {
   switch (type) {
   case PrimitiveType::I8:
@@ -108,6 +109,25 @@ public:
 
   bool equals(const Type &other) const override;
 };
+static inline bool isSigned(const Type &type) {
+  if (type.type != TypeType::PRIMITIVE) {
+    return false;
+  }
+  return isSigned(static_cast<const PrimitiveTypeNode &>(type).primitiveType);
+}
+static inline bool isIntegral(const Type &type) {
+  if (type.type != TypeType::PRIMITIVE) {
+    return false;
+  }
+  return isIntegral(static_cast<const PrimitiveTypeNode &>(type).primitiveType);
+}
+static inline bool isFloat(const Type &type) {
+  if (type.type != TypeType::PRIMITIVE) {
+    return false;
+  }
+  return isFloat(static_cast<const PrimitiveTypeNode &>(type).primitiveType);
+}
+
 class ReferenceTypeNode : public Type {
 public:
   std::unique_ptr<Type> type;

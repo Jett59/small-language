@@ -11,10 +11,10 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 // Import for module print pass.
+#include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
-#include "llvm/IR/IRPrintingPasses.h"
 #include <iostream>
 
 namespace sl {
@@ -146,6 +146,41 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     }
     verifyFunction(*function);
     return function;
+  }
+  case AstNodeType::CAST: {
+    const CastNode &castNode = static_cast<const CastNode &>(expression);
+    Value *value = codegenExpression(*castNode.value, context, module,
+                                     currentFunction, symbolTable);
+    if (isIntegral(**castNode.valueType) &&
+        isIntegral(**castNode.value->valueType)) {
+      return currentFunction.irBuilder.CreateIntCast(
+          value, getLlvmType(**expression.valueType, context),
+          isSigned(**castNode.valueType));
+    } else if (isFloat(**castNode.valueType) &&
+               isFloat(**castNode.value->valueType)) {
+      return currentFunction.irBuilder.CreateFPCast(
+          value, getLlvmType(**expression.valueType, context));
+    } else if (isIntegral(**castNode.valueType) &&
+               isFloat(**castNode.value->valueType)) {
+                if (isSigned(**castNode.valueType)) {
+                    return currentFunction.irBuilder.CreateFPToSI(
+                        value, getLlvmType(**expression.valueType, context));
+                } else {
+                    return currentFunction.irBuilder.CreateFPToUI(
+                        value, getLlvmType(**expression.valueType, context));
+                }
+    } else if (isFloat(**castNode.valueType) &&
+               isIntegral(**castNode.value->valueType)) {
+                if (isSigned(**castNode.value->valueType)) {
+                    return currentFunction.irBuilder.CreateSIToFP(
+                        value, getLlvmType(**expression.valueType, context));
+                } else {
+                    return currentFunction.irBuilder.CreateUIToFP(
+                        value, getLlvmType(**expression.valueType, context));
+                }
+    } else {
+      throw std::runtime_error("Unknown cast");
+    }
   }
   case AstNodeType::VARIABLE_REFERENCE: {
     const VariableReferenceNode &variableReferenceNode =
@@ -383,11 +418,14 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
     throw std::runtime_error("Could not open file: " + ec.message());
   }
   legacy::PassManager pass;
+  pass.add(createPrintModulePass(outs()));
+  pass.add(createVerifierPass());
   pass.add(createPromoteMemoryToRegisterPass());
   pass.add(createReassociatePass());
-  pass.add(createCFGSimplificationPass());
   pass.add(createInstructionCombiningPass());
   pass.add(createAggressiveDCEPass());
+  pass.add(createCFGSimplificationPass());
+  pass.add(createInstructionCombiningPass());
   pass.add(createPrintModulePass(outs()));
   auto fileType = CGFT_AssemblyFile;
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {

@@ -19,6 +19,7 @@ enum class TokenType {
   ELSE,
   WHILE,
   FOR,
+  AS,
   NIL,
   I8,
   I16,
