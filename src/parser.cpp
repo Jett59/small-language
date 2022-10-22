@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "error.h"
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -425,8 +426,8 @@ canContinueParsingAfterReduction(const std::vector<ParserSymbol> &stack,
 AstNodePointer Parser::parse() {
   std::vector<ParserSymbol> stack;
   Token lookahead = lexer.nextToken();
-  SymbolType lastSymbolType; // Lookahead token type for shift, non-terminal for
-                             // reduce
+  SymbolType lastSymbolType = lookahead.type; // Lookahead token type for shift,
+                                              // non-terminal for reduce
   while (stack.size() != 1 ||
          stack[0].type != SymbolType{NonTerminal::COMPILATION_UNIT}) {
     if (lookahead.type == TokenType::ERROR) {
@@ -503,8 +504,9 @@ AstNodePointer Parser::parse() {
       }
     }
     if (!dominantMatch) {
-      throw std::runtime_error("Syntax error: unexpected "s +
-                               symbolTypeToString(lastSymbolType));
+      throw SlException(lookahead.line, lookahead.column,
+                        "Syntax error: unexpected "s +
+                            symbolTypeToString(lastSymbolType));
     }
     if (dominantMatch->canReduce) {
       lastSymbolType = dominantMatch->rule.type;
@@ -521,7 +523,7 @@ AstNodePointer Parser::parse() {
       lookahead = lexer.nextToken();
       lastSymbolType = lookahead.type;
     }
-    //printStack(stack);
+    // printStack(stack);
   }
   return std::move(std::get<AstNodePointer>(stack[0].value));
 }

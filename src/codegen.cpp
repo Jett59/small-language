@@ -1,6 +1,7 @@
 #include "codegen.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -10,8 +11,6 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
-// Import for module print pass.
-#include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
@@ -89,8 +88,12 @@ static Value *decayPointer(Value *value, LLVMContext &context,
   if (isa<PointerType>(value->getType())) {
     const ReferenceTypeNode &referenceType =
         static_cast<const ReferenceTypeNode &>(type);
-    return function.irBuilder.CreateLoad(
-        getLlvmType(*referenceType.type, context), value);
+    if (referenceType.type->type != TypeType::FUNCTION) {
+      return function.irBuilder.CreateLoad(
+          getLlvmType(*referenceType.type, context), value);
+    } else {
+      return value;
+    }
   } else {
     return value;
   }
@@ -126,7 +129,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     Function *function =
         Function::Create(static_cast<FunctionType *>(
                              getLlvmType(**expression.valueType, context)),
-                         GlobalValue::ExternalLinkage, "#func", &module);
+                         GlobalValue::InternalLinkage, "#func", &module);
     BasicBlock *entryBlock = BasicBlock::Create(context, "entry", function);
     FunctionContext newFunctionContext{function, entryBlock,
                                        IRBuilder<>(entryBlock)};
@@ -151,33 +154,36 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     const CastNode &castNode = static_cast<const CastNode &>(expression);
     Value *value = codegenExpression(*castNode.value, context, module,
                                      currentFunction, symbolTable);
-    if (isIntegral(**castNode.valueType) &&
-        isIntegral(**castNode.value->valueType)) {
+    value = decayPointer(value, context, currentFunction,
+                         **castNode.value->valueType);
+    bool isResultValueIntegral = isIntegral(**castNode.valueType);
+    bool isResultValueFloat = isFloat(**castNode.valueType);
+    bool isOriginalValueIntegral = value->getType()->isIntegerTy();
+    bool isOriginalValueFloat = value->getType()->isFloatingPointTy();
+    if (isResultValueIntegral && isOriginalValueIntegral) {
       return currentFunction.irBuilder.CreateIntCast(
           value, getLlvmType(**expression.valueType, context),
           isSigned(**castNode.valueType));
-    } else if (isFloat(**castNode.valueType) &&
-               isFloat(**castNode.value->valueType)) {
+    } else if (isResultValueFloat && isOriginalValueFloat) {
       return currentFunction.irBuilder.CreateFPCast(
           value, getLlvmType(**expression.valueType, context));
-    } else if (isIntegral(**castNode.valueType) &&
-               isFloat(**castNode.value->valueType)) {
-                if (isSigned(**castNode.valueType)) {
-                    return currentFunction.irBuilder.CreateFPToSI(
-                        value, getLlvmType(**expression.valueType, context));
-                } else {
-                    return currentFunction.irBuilder.CreateFPToUI(
-                        value, getLlvmType(**expression.valueType, context));
-                }
-    } else if (isFloat(**castNode.valueType) &&
-               isIntegral(**castNode.value->valueType)) {
-                if (isSigned(**castNode.value->valueType)) {
-                    return currentFunction.irBuilder.CreateSIToFP(
-                        value, getLlvmType(**expression.valueType, context));
-                } else {
-                    return currentFunction.irBuilder.CreateUIToFP(
-                        value, getLlvmType(**expression.valueType, context));
-                }
+    } else if (isResultValueIntegral && isOriginalValueFloat) {
+      if (isSigned(**castNode.valueType)) {
+        return currentFunction.irBuilder.CreateFPToSI(
+            value, getLlvmType(**expression.valueType, context));
+      } else {
+        return currentFunction.irBuilder.CreateFPToUI(
+            value, getLlvmType(**expression.valueType, context));
+      }
+    } else if (isResultValueFloat && isOriginalValueIntegral) {
+      if (isSigned(**castNode.value->valueType) ||
+          isRefToSigned(**castNode.value->valueType)) {
+        return currentFunction.irBuilder.CreateSIToFP(
+            value, getLlvmType(**expression.valueType, context));
+      } else {
+        return currentFunction.irBuilder.CreateUIToFP(
+            value, getLlvmType(**expression.valueType, context));
+      }
     } else {
       throw std::runtime_error("Unknown cast");
     }
@@ -418,14 +424,16 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
     throw std::runtime_error("Could not open file: " + ec.message());
   }
   legacy::PassManager pass;
-  pass.add(createPrintModulePass(outs()));
   pass.add(createVerifierPass());
   pass.add(createPromoteMemoryToRegisterPass());
   pass.add(createReassociatePass());
   pass.add(createInstructionCombiningPass());
   pass.add(createAggressiveDCEPass());
+  pass.add(createSinkingPass());
+  pass.add(createInstructionCombiningPass());
   pass.add(createCFGSimplificationPass());
   pass.add(createInstructionCombiningPass());
+  pass.add(createTailCallEliminationPass());
   pass.add(createPrintModulePass(outs()));
   auto fileType = CGFT_AssemblyFile;
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {

@@ -1,7 +1,6 @@
 #ifndef SL_ERROR_H
 #define SL_ERROR_H
 
-#include <format>
 #include <string>
 
 namespace sl {
@@ -10,7 +9,7 @@ public:
   SlException(int line, int column, std::string message)
       : line(line), column(column), message(message) {}
   std::string what() const noexcept {
-    return std::format("{}:{}: {}", line, column, message);
+    return std::to_string(line) + ":" + std::to_string(column) + ": " + message;
   }
 
 private:

@@ -104,6 +104,8 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "while";
   case TokenType::FOR:
     return "for";
+  case TokenType::AS:
+    return "as";
     case TokenType::NIL:
     return "nil";
   case TokenType::I8:

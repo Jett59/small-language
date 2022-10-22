@@ -210,18 +210,31 @@ Token Lexer::nextToken() {
   unreadCharacter();
   int startLine = line, startColumn = column;
   size_t startBufferIndex = bufferIndex;
+  std::optional<Token> bestMatch;
+  size_t bestFinalColumn = 0;
+  size_t bestFinalLine = 0;
+  size_t bestFinalBufferIndex = 0;
   for (auto getter : tokenGetters) {
     auto token = getter(*this);
     if (token) {
-      //buffer = buffer.substr(bufferIndex);
-      //bufferIndex = 0;
-      token->line = startLine;
-      token->column = startColumn;
-      return *token;
+      if (!bestMatch || line > bestFinalLine || column > bestFinalColumn) {
+        bestMatch = token;
+        bestFinalColumn = column;
+        bestFinalLine = line;
+        bestFinalBufferIndex = bufferIndex;
+      }
     }
     bufferIndex = startBufferIndex;
     line = startLine;
     column = startColumn;
+  }
+  if (bestMatch) {
+    bestMatch->line = startLine;
+    bestMatch->column = startColumn;
+    line = bestFinalLine;
+    column = bestFinalColumn;
+    bufferIndex = bestFinalBufferIndex;
+    return *bestMatch;
   }
   if (input.eof()) {
     return Token{.type = TokenType::END};

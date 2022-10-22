@@ -142,6 +142,29 @@ public:
 
   bool equals(const Type &other) const override;
 };
+
+static inline bool isRefToInteger(const Type &type) {
+  if (type.type != TypeType::REFERENCE) {
+    return false;
+  }
+  const auto &refType = static_cast<const ReferenceTypeNode &>(type);
+  return isIntegral(*refType.type);
+}
+static inline bool isRefToFloat(const Type &type) {
+  if (type.type != TypeType::REFERENCE) {
+    return false;
+  }
+  const auto &refType = static_cast<const ReferenceTypeNode &>(type);
+  return isFloat(*refType.type);
+}
+static inline bool isRefToSigned(const Type &type) {
+  if (type.type != TypeType::REFERENCE) {
+    return false;
+  }
+  const auto &refType = static_cast<const ReferenceTypeNode &>(type);
+  return isSigned(*refType.type);
+}
+
 class FunctionTypeNode : public Type {
 public:
   std::vector<std::unique_ptr<Type>> arguments;

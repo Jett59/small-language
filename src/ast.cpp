@@ -70,7 +70,12 @@ std::string CastNode::toString() const {
 
 std::unique_ptr<Type> decayReferenceType(std::unique_ptr<Type> type) {
   if (type->type == TypeType::REFERENCE) {
-    return static_cast<const ReferenceTypeNode &>(*type).type->clone();
+    const auto &referenceType = static_cast<const ReferenceTypeNode &>(*type);
+    if (referenceType.type->type != TypeType::FUNCTION) {
+      return referenceType.type->clone();
+    } else {
+      return type;
+    }
   } else {
     return type;
   }
@@ -183,7 +188,8 @@ void BinaryOperatorNode::assignType(
     if (isIntegral(*leftType) && right->type == AstNodeType::INTEGER_LITERAL) {
       rightType = leftType->clone();
       right->valueType = leftType->clone();
-    } else if (isFloat(*leftType) && right->type == AstNodeType::FLOAT_LITERAL) {
+    } else if (isFloat(*leftType) &&
+               right->type == AstNodeType::FLOAT_LITERAL) {
       rightType = leftType->clone();
       right->valueType = leftType->clone();
     }
