@@ -107,11 +107,16 @@ void BoolLiteralNode::assignType(
 void FunctionNode::assignType(
     std::map<std::string, const DefinitionNode &> &symbolTable) {
   auto newSymbolTable = symbolTable;
+  // To avoid fake definitions from going out of scope too soon.
+  std::vector<std::unique_ptr<DefinitionNode>> fakeDefinitions;
+  fakeDefinitions.reserve(parameters.size());
   for (const auto &parameter : parameters) {
     // Create a fake definition node for the parameter.
-    auto definitionNode = DefinitionNode{parameter->name, nullptr, "let"};
-    definitionNode.valueType = parameter->type->clone();
-    newSymbolTable.emplace(parameter->name, std::move(definitionNode));
+    std::unique_ptr<DefinitionNode> definition =
+        std::make_unique<DefinitionNode>(parameter->name, nullptr, "let",
+                                         parameter->type->clone());
+    fakeDefinitions.push_back(std::move(definition));
+    newSymbolTable.emplace(parameter->name, *fakeDefinitions.back());
   }
   for (auto &statement : body) {
     statement->assignType(newSymbolTable);

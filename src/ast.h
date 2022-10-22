@@ -57,10 +57,14 @@ public:
   std::string name;
   std::unique_ptr<AstNode> initializer;
   DefinitionNode(std::string name, std::unique_ptr<AstNode> initializer,
-                 const std::string &declarationKeyword)
+                 const std::string &declarationKeyword, std::optional<std::unique_ptr<Type>> valueType=std::nullopt)
       : AstNode(AstNodeType::DEFINITION), name(std::move(name)),
         initializer(std::move(initializer)),
-        constant(declarationKeyword == "let") {}
+        constant(declarationKeyword == "let") {
+    if (valueType) {
+      this->valueType = std::move(*valueType);
+    }
+        }
 
   std::string toString() const override;
 

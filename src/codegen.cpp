@@ -2,9 +2,11 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
@@ -71,6 +73,37 @@ static llvm::Type *getLlvmType(const sl::Type &type, LLVMContext &context) {
   }
 }
 
+static const Type &removeReference(const Type &type) {
+  return type.type == TypeType::REFERENCE
+             ? *static_cast<const ReferenceTypeNode &>(type).type
+             : type;
+}
+
+static Value *decayPointer(Value *value, LLVMContext &context,
+                           FunctionContext &function, const sl::Type &type) {
+  if (isa<PointerType>(value->getType())) {
+    const ReferenceTypeNode &referenceType =
+        static_cast<const ReferenceTypeNode &>(type);
+    return function.irBuilder.CreateLoad(
+        getLlvmType(*referenceType.type, context), value);
+  } else {
+    return value;
+  }
+}
+static Value *decayAssignmentRhs(Value *rhs, const Type &lhsType,
+                                 const Type &rhsType, LLVMContext &context,
+                                 FunctionContext &function) {
+  // References should decay if the type system decrees so. We can check this by
+  // comparing the type of the LHS with the type of the RHS. If
+  // they are the same, the reference was not decayed. If they are different,
+  // the reference was decayed.
+  if (!lhsType.equals(rhsType)) {
+    return decayPointer(rhs, context, function, rhsType);
+  } else {
+    return rhs;
+  }
+}
+
 using SymbolTable = std::map<std::string, Value *>;
 
 static void codegenStatement(const AstNode &statement, LLVMContext &context,
@@ -132,6 +165,70 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     return ConstantInt::get(getLlvmType(**expression.valueType, context),
                             boolLiteralNode.value);
   }
+  case AstNodeType::BINARY_OPERATOR: {
+    const BinaryOperatorNode &binaryOperatorNode =
+        static_cast<const BinaryOperatorNode &>(expression);
+    Value *left = codegenExpression(*binaryOperatorNode.left, context, module,
+                                    currentFunction, symbolTable);
+    Value *right = codegenExpression(*binaryOperatorNode.right, context, module,
+                                     currentFunction, symbolTable);
+    if (binaryOperatorNode.operatorType != BinaryOperatorType::ASSIGN) {
+      left = decayPointer(left, context, currentFunction,
+                          **binaryOperatorNode.left->valueType);
+      right = decayPointer(right, context, currentFunction,
+                           **binaryOperatorNode.right->valueType);
+    } else {
+      right = decayAssignmentRhs(right, **binaryOperatorNode.left->valueType,
+                                 **binaryOperatorNode.right->valueType, context,
+                                 currentFunction);
+    }
+    if (binaryOperatorNode.valueType->get()->type == TypeType::PRIMITIVE) {
+      PrimitiveType primitiveType = static_cast<const PrimitiveTypeNode &>(
+                                        *binaryOperatorNode.valueType->get())
+                                        .primitiveType;
+      if (primitiveType == PrimitiveType::NIL) {
+        throw std::runtime_error("Cannot perform binary operation on nil");
+      }
+      switch (binaryOperatorNode.operatorType) {
+      case BinaryOperatorType::ASSIGN:
+        return currentFunction.irBuilder.CreateStore(right, left);
+      case BinaryOperatorType::ADD:
+        return currentFunction.irBuilder.CreateAdd(left, right);
+      case BinaryOperatorType::SUBTRACT:
+        return currentFunction.irBuilder.CreateSub(left, right);
+      case BinaryOperatorType::MULTIPLY:
+        return currentFunction.irBuilder.CreateMul(left, right);
+      case BinaryOperatorType::DIVIDE: {
+        if (isSigned(primitiveType)) {
+          return currentFunction.irBuilder.CreateSDiv(left, right);
+        } else {
+          return currentFunction.irBuilder.CreateUDiv(left, right);
+        }
+      }
+      case BinaryOperatorType::MODULO: {
+        if (isSigned(primitiveType)) {
+          return currentFunction.irBuilder.CreateSRem(left, right);
+        } else {
+          return currentFunction.irBuilder.CreateURem(left, right);
+        }
+      }
+      case BinaryOperatorType::EQUAL: {
+        if (isIntegral(primitiveType) || primitiveType == PrimitiveType::BOOL) {
+          return currentFunction.irBuilder.CreateICmpEQ(left, right);
+        } else if (isFloat(primitiveType)) {
+          return currentFunction.irBuilder.CreateFCmpOEQ(left, right);
+        } else {
+          throw std::runtime_error("Unsupported type for equality comparison");
+        }
+      }
+      default:
+        throw std::runtime_error("Unknown binary operator");
+      }
+    } else {
+      throw std::runtime_error("Unsupported type for binary operator");
+    }
+    break;
+  }
   default:
     throw std::runtime_error("Unknown expression type");
   }
@@ -143,15 +240,10 @@ static void codegenGlobalDefinition(const DefinitionNode &definition,
                                     SymbolTable &symbolTable) {
   Value *initializerValue = codegenExpression(
       *definition.initializer, context, module, initFunction, symbolTable);
-  if (isa<PointerType>(initializerValue->getType()) &&
-      !definition.valueType->get()->equals(
-          *definition.initializer->valueType->get())) {
-    initializerValue = initFunction.irBuilder.CreateLoad(
-        getLlvmType(**definition.valueType, context), initializerValue);
-  }
-  // Determine if the initializer is a constant value.
+  initializerValue = decayAssignmentRhs(
+      initializerValue, **definition.valueType,
+      **definition.initializer->valueType, context, initFunction);
   bool isConstantExpression = isa<Constant>(initializerValue);
-  std::cout << "Is constant expression: " << isConstantExpression << std::endl;
   GlobalVariable *globalVariable = new GlobalVariable(
       initializerValue->getType(), isConstantExpression && definition.constant,
       GlobalValue::InternalLinkage, nullptr, definition.name);
@@ -173,12 +265,9 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
         static_cast<const DefinitionNode &>(statement);
     Value *initializerValue = codegenExpression(
         *definition.initializer, context, module, function, symbolTable);
-    if (isa<PointerType>(initializerValue->getType()) &&
-        !definition.valueType->get()->equals(
-            *definition.initializer->valueType->get())) {
-      initializerValue = function.irBuilder.CreateLoad(
-          getLlvmType(**statement.valueType, context), initializerValue);
-    }
+    initializerValue = decayAssignmentRhs(
+        initializerValue, **definition.valueType,
+        **definition.initializer->valueType, context, function);
     if (definition.constant) {
       symbolTable[definition.name] = initializerValue;
     } else {
@@ -199,6 +288,8 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
   InitializeAllTargetInfos();
   InitializeAllTargets();
   InitializeAllTargetMCs();
+  InitializeAllAsmPrinters();
+  InitializeAllAsmParsers();
   LLVMContext llvmContext;
   Module module("sl", llvmContext);
   if (ast.type != AstNodeType::COMPILATION_UNIT) {
@@ -244,8 +335,22 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
   auto rm = Optional<Reloc::Model>();
   auto targetMachine =
       target->createTargetMachine(targetTriple, cpu, features, opt, rm);
+  if (!targetMachine) {
+    throw std::runtime_error("Could not allocate target machine");
+  }
   module.setTargetTriple(targetTriple);
   module.setDataLayout(targetMachine->createDataLayout());
-  module.print(errs(), nullptr);
-}
+  std::error_code ec;
+  raw_fd_ostream dest("output.s", ec, sys::fs::OF_None);
+  if (ec) {
+    throw std::runtime_error("Could not open file: " + ec.message());
+  }
+  legacy::PassManager pass;
+  auto fileType = CGFT_AssemblyFile;
+  if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
+    throw std::runtime_error("TargetMachine can't emit a file of this type");
+  }
+  pass.run(module);
+  dest.flush();
+  }
 } // namespace sl

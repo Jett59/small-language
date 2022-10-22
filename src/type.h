@@ -47,6 +47,45 @@ enum class PrimitiveType {
   CHAR,
   STRING,
 };
+static inline bool isSigned(PrimitiveType type) {
+  switch (type) {
+  case PrimitiveType::I8:
+  case PrimitiveType::I16:
+  case PrimitiveType::I32:
+  case PrimitiveType::I64:
+  case PrimitiveType::IPTR:
+    return true;
+  default:
+    return false;
+  }
+}
+static inline bool isIntegral(PrimitiveType type) {
+  switch (type) {
+  case PrimitiveType::I8:
+  case PrimitiveType::I16:
+  case PrimitiveType::I32:
+  case PrimitiveType::I64:
+  case PrimitiveType::IPTR:
+  case PrimitiveType::U8:
+  case PrimitiveType::U16:
+  case PrimitiveType::U32:
+  case PrimitiveType::U64:
+  case PrimitiveType::UPTR:
+    return true;
+  default:
+    return false;
+  }
+}
+static inline bool isFloat(PrimitiveType type) {
+  switch (type) {
+  case PrimitiveType::F32:
+  case PrimitiveType::F64:
+    return true;
+  default:
+    return false;
+  }
+}
+
 static std::map<PrimitiveType, std::string> primitiveTypeToString = {
     {PrimitiveType::NIL, "nil"},   {PrimitiveType::I8, "i8"},
     {PrimitiveType::I16, "i16"},   {PrimitiveType::I32, "i32"},
