@@ -116,12 +116,14 @@ using SymbolTable = std::map<std::string, Value *>;
 
 static void codegenStatement(const AstNode &statement, LLVMContext &context,
                              Module &module, FunctionContext &function,
-                             SymbolTable &symbolTable);
+                             SymbolTable &symbolTable,
+                             const SymbolTable &allGlobalSymbols);
 
 static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
                                 Module &module,
                                 FunctionContext &currentFunction,
-                                SymbolTable &symbolTable) {
+                                SymbolTable &symbolTable,
+                                const SymbolTable &allGlobalSymbols) {
   switch (expression.type) {
   case AstNodeType::FUNCTION: {
     const FunctionNode &functionNode =
@@ -140,14 +142,14 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     BasicBlock *entryBlock = BasicBlock::Create(context, "entry", function);
     FunctionContext newFunctionContext{function, entryBlock,
                                        IRBuilder<>(entryBlock)};
-    SymbolTable newSymbolTable = symbolTable;
+    SymbolTable newSymbolTable = allGlobalSymbols;
     for (size_t i = 0; i < functionNode.parameters.size(); i++) {
       const auto &parameter = functionNode.parameters[i];
       newSymbolTable[parameter->name] = function->arg_begin() + i;
     }
     for (const auto &statement : functionNode.body) {
       codegenStatement(*statement, context, module, newFunctionContext,
-                       newSymbolTable);
+                       newSymbolTable, allGlobalSymbols);
     }
     if (PrimitiveTypeNode{PrimitiveType::NIL}.equals(
             *functionType.returnType)) {
@@ -158,8 +160,9 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
   }
   case AstNodeType::CAST: {
     const CastNode &castNode = static_cast<const CastNode &>(expression);
-    Value *value = codegenExpression(*castNode.value, context, module,
-                                     currentFunction, symbolTable);
+    Value *value =
+        codegenExpression(*castNode.value, context, module, currentFunction,
+                          symbolTable, allGlobalSymbols);
     value = decayPointer(value, context, currentFunction,
                          **castNode.value->valueType);
     bool isResultValueIntegral = isIntegral(**castNode.valueType);
@@ -220,10 +223,12 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
   case AstNodeType::BINARY_OPERATOR: {
     const BinaryOperatorNode &binaryOperatorNode =
         static_cast<const BinaryOperatorNode &>(expression);
-    Value *left = codegenExpression(*binaryOperatorNode.left, context, module,
-                                    currentFunction, symbolTable);
-    Value *right = codegenExpression(*binaryOperatorNode.right, context, module,
-                                     currentFunction, symbolTable);
+    Value *left =
+        codegenExpression(*binaryOperatorNode.left, context, module,
+                          currentFunction, symbolTable, allGlobalSymbols);
+    Value *right =
+        codegenExpression(*binaryOperatorNode.right, context, module,
+                          currentFunction, symbolTable, allGlobalSymbols);
     if (binaryOperatorNode.operatorType != BinaryOperatorType::ASSIGN) {
       left = decayPointer(left, context, currentFunction,
                           **binaryOperatorNode.left->valueType);
@@ -290,17 +295,18 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
 static void codegenGlobalDefinition(const DefinitionNode &definition,
                                     LLVMContext &context, Module &module,
                                     FunctionContext &initFunction,
-                                    SymbolTable &symbolTable) {
-  Value *initializerValue = codegenExpression(
-      *definition.initializer, context, module, initFunction, symbolTable);
+                                    SymbolTable &symbolTable,
+                                    const SymbolTable &allGlobalSymbols) {
+  Value *initializerValue =
+      codegenExpression(*definition.initializer, context, module, initFunction,
+                        symbolTable, allGlobalSymbols);
   initializerValue = decayAssignmentRhs(
       initializerValue, **definition.valueType,
       **definition.initializer->valueType, context, initFunction);
   bool isConstantExpression = isa<Constant>(initializerValue);
-  GlobalVariable *globalVariable = new GlobalVariable(
-      initializerValue->getType(), isConstantExpression && definition.constant,
-      GlobalValue::InternalLinkage, nullptr, definition.name);
-  module.getGlobalList().push_back(globalVariable);
+  GlobalVariable *globalVariable =
+      static_cast<GlobalVariable *>(allGlobalSymbols.at(definition.name));
+  globalVariable->setConstant(isConstantExpression && definition.constant);
   if (isConstantExpression) {
     globalVariable->setInitializer(cast<Constant>(initializerValue));
   } else {
@@ -313,13 +319,15 @@ static void codegenGlobalDefinition(const DefinitionNode &definition,
 
 static void codegenStatement(const AstNode &statement, LLVMContext &context,
                              Module &module, FunctionContext &function,
-                             SymbolTable &symbolTable) {
+                             SymbolTable &symbolTable,
+                             const SymbolTable &allGlobalSymbols) {
   switch (statement.type) {
   case AstNodeType::DEFINITION: {
     const DefinitionNode &definition =
         static_cast<const DefinitionNode &>(statement);
-    Value *initializerValue = codegenExpression(
-        *definition.initializer, context, module, function, symbolTable);
+    Value *initializerValue =
+        codegenExpression(*definition.initializer, context, module, function,
+                          symbolTable, allGlobalSymbols);
     initializerValue = decayAssignmentRhs(
         initializerValue, **definition.valueType,
         **definition.initializer->valueType, context, function);
@@ -337,8 +345,9 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
   case AstNodeType::IF_STATEMENT: {
     const IfStatementNode &ifStatement =
         static_cast<const IfStatementNode &>(statement);
-    Value *conditionValue = codegenExpression(*ifStatement.condition, context,
-                                              module, function, symbolTable);
+    Value *conditionValue =
+        codegenExpression(*ifStatement.condition, context, module, function,
+                          symbolTable, allGlobalSymbols);
     conditionValue = decayPointer(conditionValue, context, function,
                                   **ifStatement.condition->valueType);
     BasicBlock *trueBranch =
@@ -351,14 +360,16 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     function.irBuilder.SetInsertPoint(trueBranch);
     SymbolTable newSymbolTable = symbolTable;
     for (const auto &statement : ifStatement.thenBody) {
-      codegenStatement(*statement, context, module, function, newSymbolTable);
+      codegenStatement(*statement, context, module, function, newSymbolTable,
+                       allGlobalSymbols);
     }
     function.irBuilder.CreateBr(mergeBranch);
     trueBranch = function.irBuilder.GetInsertBlock();
     function.irBuilder.SetInsertPoint(falseBranch);
     newSymbolTable = symbolTable;
     for (const auto &statement : ifStatement.elseBody) {
-      codegenStatement(*statement, context, module, function, newSymbolTable);
+      codegenStatement(*statement, context, module, function, newSymbolTable,
+                       allGlobalSymbols);
     }
     function.irBuilder.CreateBr(mergeBranch);
     falseBranch = function.irBuilder.GetInsertBlock();
@@ -366,7 +377,8 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     break;
   }
   default:
-    codegenExpression(statement, context, module, function, symbolTable);
+    codegenExpression(statement, context, module, function, symbolTable,
+                      allGlobalSymbols);
   }
 }
 
@@ -391,15 +403,28 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
       IRBuilder<>(rawDefinitionsEntryBlock)};
   const CompilationUnitNode &compilationUnit =
       static_cast<const CompilationUnitNode &>(ast);
+  SymbolTable allGlobalSymbols;
+  for (const auto &statement : compilationUnit.definitions) {
+    if (statement->type == AstNodeType::DEFINITION) {
+      const DefinitionNode &definition =
+          static_cast<const DefinitionNode &>(*statement);
+      GlobalVariable *globalVariable = new GlobalVariable(
+          getLlvmType(**statement->valueType, llvmContext), false,
+          GlobalValue::InternalLinkage, nullptr, definition.name);
+      module.getGlobalList().push_back(globalVariable);
+      allGlobalSymbols[definition.name] = globalVariable;
+    }
+  }
   SymbolTable symbolTable;
   for (const auto &statement : compilationUnit.definitions) {
     if (statement->type != AstNodeType::DEFINITION) {
       codegenStatement(*statement, llvmContext, module,
-                       rawDefinitionsFunctionContext, symbolTable);
+                       rawDefinitionsFunctionContext, symbolTable,
+                       allGlobalSymbols);
     } else {
-      codegenGlobalDefinition(static_cast<const DefinitionNode &>(*statement),
-                              llvmContext, module,
-                              rawDefinitionsFunctionContext, symbolTable);
+      codegenGlobalDefinition(
+          static_cast<const DefinitionNode &>(*statement), llvmContext, module,
+          rawDefinitionsFunctionContext, symbolTable, allGlobalSymbols);
     }
   }
   rawDefinitionsFunctionContext.irBuilder.CreateRetVoid();

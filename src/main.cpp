@@ -1,9 +1,10 @@
 #include "codegen.h"
+#include "error.h"
 #include "lexer.h"
 #include "parser.h"
-#include "error.h"
 #include <fstream>
 #include <iostream>
+
 
 using namespace sl;
 
@@ -39,7 +40,7 @@ struct Options {
         help = true;
       } else if (arg == "-v" || arg == "--version") {
         version = true;
-      }else if (arg == "-t" || arg == "--target") {
+      } else if (arg == "-t" || arg == "--target") {
         if (i + 1 < argc) {
           target = argv[i + 1];
           i++;
@@ -73,13 +74,13 @@ int main(int argc, char **argv) {
       auto ast = parser.parse();
       {
         std::map<std::string, const DefinitionNode &> symbolTable;
-        ast->assignType(symbolTable);
+        ast->assignType(symbolTable, {});
       }
       codegen(*ast, options.target);
     } catch (const SlException &e) {
       std::cerr << e.what() << std::endl;
       exit(1);
-    }catch (const std::exception &e) {
+    } catch (const std::exception &e) {
       std::cerr << e.what() << std::endl;
       exit(1);
     }

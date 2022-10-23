@@ -81,15 +81,24 @@ std::unique_ptr<Type> decayReferenceType(std::unique_ptr<Type> type) {
   }
 }
 
-void CompilationUnitNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void CompilationUnitNode::assignType(SymbolTable &symbolTable,
+                                     const SymbolTable &) {
+  SymbolTable allGlobalDefinitions;
   for (auto &definition : definitions) {
-    definition->assignType(symbolTable);
+    if (definition->type == AstNodeType::DEFINITION) {
+      auto &definitionNode = static_cast<DefinitionNode &>(*definition);
+      // Run the type assignment with global symbols as empty, thus skipping all
+      // function body type assignment.
+      definitionNode.assignType(allGlobalDefinitions, {});
+    }
+  }
+  for (auto &definition : definitions) {
+    definition->assignType(symbolTable, allGlobalDefinitions);
   }
 }
-void DefinitionNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
-  initializer->assignType(symbolTable);
+void DefinitionNode::assignType(SymbolTable &symbolTable,
+                                const SymbolTable &allGlobalSymbols) {
+  initializer->assignType(symbolTable, allGlobalSymbols);
   if (!initializer->valueType) {
     throw SlException(initializer->line, initializer->column,
                       "Initializer has no type");
@@ -97,39 +106,41 @@ void DefinitionNode::assignType(
   valueType = decayReferenceType(initializer->valueType->get()->clone());
   symbolTable.emplace(name, *this);
 }
-void IntegerLiteralNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void IntegerLiteralNode::assignType(SymbolTable &symbolTable,
+                                    const SymbolTable &) {
   valueType =
       std::make_unique<PrimitiveTypeNode>(getSmallestTypeThatContains(value));
 }
-void FloatLiteralNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void FloatLiteralNode::assignType(SymbolTable &symbolTable,
+                                  const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::F64);
 }
-void StringLiteralNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void StringLiteralNode::assignType(SymbolTable &symbolTable,
+                                   const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::STRING);
 }
-void BoolLiteralNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void BoolLiteralNode::assignType(SymbolTable &symbolTable,
+                                 const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::BOOL);
 }
-void FunctionNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
-  auto newSymbolTable = symbolTable;
-  // To avoid fake definitions from going out of scope too soon.
-  std::vector<std::unique_ptr<DefinitionNode>> fakeDefinitions;
-  fakeDefinitions.reserve(parameters.size());
-  for (const auto &parameter : parameters) {
-    // Create a fake definition node for the parameter.
-    std::unique_ptr<DefinitionNode> definition =
-        std::make_unique<DefinitionNode>(parameter->name, nullptr, "let",
-                                         parameter->type->clone());
-    fakeDefinitions.push_back(std::move(definition));
-    newSymbolTable.emplace(parameter->name, *fakeDefinitions.back());
-  }
-  for (auto &statement : body) {
-    statement->assignType(newSymbolTable);
+void FunctionNode::assignType(SymbolTable &symbolTable,
+                              const SymbolTable &allGlobalSymbols) {
+  if (!allGlobalSymbols.empty()) {
+    auto newSymbolTable = allGlobalSymbols;
+    // To avoid fake definitions from going out of scope too soon.
+    std::vector<std::unique_ptr<DefinitionNode>> fakeDefinitions;
+    fakeDefinitions.reserve(parameters.size());
+    for (const auto &parameter : parameters) {
+      // Create a fake definition node for the parameter.
+      std::unique_ptr<DefinitionNode> definition =
+          std::make_unique<DefinitionNode>(parameter->name, nullptr, "let",
+                                           parameter->type->clone());
+      fakeDefinitions.push_back(std::move(definition));
+      newSymbolTable.emplace(parameter->name, *fakeDefinitions.back());
+    }
+    for (auto &statement : body) {
+      statement->assignType(newSymbolTable, allGlobalSymbols);
+    }
   }
   std::vector<std::unique_ptr<Type>> parameterTypes;
   for (auto &parameter : parameters) {
@@ -150,10 +161,10 @@ static inline bool isComparisonOperator(BinaryOperatorType operatorType) {
          operatorType == BinaryOperatorType::GREATER_THAN_OR_EQUAL;
 }
 
-void BinaryOperatorNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
-  left->assignType(symbolTable);
-  right->assignType(symbolTable);
+void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
+                                    const SymbolTable &allGlobalSymbols) {
+  left->assignType(symbolTable, allGlobalSymbols);
+  right->assignType(symbolTable, allGlobalSymbols);
   if (!left->valueType || !right->valueType) {
     throw SlException(line, column, "Binary operator has no type");
   }
@@ -210,14 +221,13 @@ void BinaryOperatorNode::assignType(
     }
   }
 }
-void NilNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void NilNode::assignType(SymbolTable &, const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::NIL);
 }
-void IfStatementNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void IfStatementNode::assignType(SymbolTable &symbolTable,
+                                 const SymbolTable &allGlobalSymbols) {
   auto newSymbolTable = symbolTable;
-  condition->assignType(newSymbolTable);
+  condition->assignType(newSymbolTable, allGlobalSymbols);
   if (!condition->valueType) {
     throw SlException(line, column, "If condition has no type");
   }
@@ -228,14 +238,14 @@ void IfStatementNode::assignType(
     throw SlException(line, column, "If condition is not a boolean");
   }
   for (auto &statement : thenBody) {
-    statement->assignType(newSymbolTable);
+    statement->assignType(newSymbolTable, allGlobalSymbols);
   }
   for (auto &statement : elseBody) {
-    statement->assignType(symbolTable);
+    statement->assignType(symbolTable, allGlobalSymbols);
   }
 }
-void VariableReferenceNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
+void VariableReferenceNode::assignType(SymbolTable &symbolTable,
+                                       const SymbolTable &) {
   auto typeEntry = symbolTable.find(name);
   if (typeEntry == symbolTable.end()) {
     throw SlException(line, column, "Variable " + name + " not found");
@@ -243,9 +253,9 @@ void VariableReferenceNode::assignType(
   valueType = std::make_unique<ReferenceTypeNode>(
       typeEntry->second.valueType->get()->clone(), typeEntry->second.constant);
 }
-void CastNode::assignType(
-    std::map<std::string, const DefinitionNode &> &symbolTable) {
-  value->assignType(symbolTable);
+void CastNode::assignType(SymbolTable &symbolTable,
+                          const SymbolTable &allGlobalSymbols) {
+  value->assignType(symbolTable, allGlobalSymbols);
   if (!value->valueType) {
     throw SlException(line, column, "Cast expression has no type");
   }

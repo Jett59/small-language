@@ -11,6 +11,6 @@ let switch = fn (a: i32) -> nil {
     if anFn == fn1 {
         anFn = fn2;
     }else {
-        anFn = fn1;
+        anFn = switch;
     }
 };
