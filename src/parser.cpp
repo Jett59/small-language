@@ -274,6 +274,13 @@ static ParserRule parserRules[] = {
          TokenType::LEFT_BRACE, NonTerminal::STATEMENT_LIST,
          TokenType::RIGHT_BRACE},
         Precedence::DEFAULT, Associativity::DEFAULT),
+    simpleRule<NonTerminal::EXPRESSION, FunctionNode, 0,
+               IndexAndType<4, std::unique_ptr<Type>>,
+               IndexAndType<6, AstNodeList>>(
+        {TokenType::FN, TokenType::LEFT_PAREN, TokenType::RIGHT_PAREN,
+         TokenType::ARROW, NonTerminal::TYPE, TokenType::LEFT_BRACE,
+         NonTerminal::STATEMENT_LIST, TokenType::RIGHT_BRACE},
+        Precedence::DEFAULT, Associativity::DEFAULT),
     simpleRule<NonTerminal::EXPRESSION, CastNode, 1, IndexAndType<0>,
                IndexAndType<2, std::unique_ptr<Type>>>(
         {NonTerminal::EXPRESSION, TokenType::AS, NonTerminal::TYPE},

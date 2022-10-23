@@ -153,6 +153,10 @@ public:
                std::vector<std::unique_ptr<AstNode>> body)
       : AstNode(AstNodeType::FUNCTION), returnType(std::move(returnType)),
         parameters(std::move(parameters)), body(std::move(body)) {}
+  FunctionNode(std::unique_ptr<Type> returnType,
+               std::vector<std::unique_ptr<AstNode>> body)
+      : AstNode(AstNodeType::FUNCTION), returnType(std::move(returnType)),
+        body(std::move(body)) {}
 
   std::string toString() const override;
 

@@ -7,10 +7,10 @@ let fn2 = fn (a: i32) -> nil {
 };
 mut anFn = fn1;
 
-let switch = fn (a: i32) -> nil {
+let switch = fn () -> nil {
     if anFn == fn1 {
         anFn = fn2;
     }else {
-        anFn = switch;
-    }
+        anFn = fn1;
+}
 };
