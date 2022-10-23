@@ -135,8 +135,10 @@ void FunctionNode::assignType(
   for (auto &parameter : parameters) {
     parameterTypes.push_back(parameter->type->clone());
   }
-  valueType = std::make_unique<FunctionTypeNode>(std::move(parameterTypes),
-                                                 returnType->clone());
+  valueType = std::make_unique<ReferenceTypeNode>(
+      std::make_unique<FunctionTypeNode>(std::move(parameterTypes),
+                                         returnType->clone()),
+      true);
 }
 
 static inline bool isComparisonOperator(BinaryOperatorType operatorType) {
@@ -157,7 +159,7 @@ void BinaryOperatorNode::assignType(
   }
   if (operatorType == BinaryOperatorType::ASSIGN) {
     const auto &leftType = *left->valueType;
-    const auto &rightType = *right->valueType;
+    auto rightType = decayReferenceType((*right->valueType)->clone());
     if (leftType->type != TypeType::REFERENCE) {
       throw SlException(line, column,
                         "Left side of assignment is not a reference");
@@ -169,10 +171,12 @@ void BinaryOperatorNode::assignType(
     }
     if (isIntegral(*leftReferenceType.type) &&
         right->type == AstNodeType::INTEGER_LITERAL) {
-      right->valueType = leftReferenceType.type->clone();
+      rightType = decayReferenceType(leftReferenceType.type->clone());
+      right->valueType = rightType->clone();
     } else if (isFloat(*leftReferenceType.type) &&
                right->type == AstNodeType::FLOAT_LITERAL) {
-      right->valueType = leftReferenceType.type->clone();
+      rightType = decayReferenceType(leftReferenceType.type->clone());
+      right->valueType = rightType->clone();
     }
     if (leftReferenceType.type->equals(*rightType)) {
       valueType = leftReferenceType.clone();

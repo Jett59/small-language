@@ -126,10 +126,17 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
   case AstNodeType::FUNCTION: {
     const FunctionNode &functionNode =
         static_cast<const FunctionNode &>(expression);
-    Function *function =
-        Function::Create(static_cast<FunctionType *>(
-                             getLlvmType(**expression.valueType, context)),
-                         GlobalValue::InternalLinkage, "#func", &module);
+    // The type of the function is a reference, so get the base type now.
+    if ((*functionNode.valueType)->type != TypeType::REFERENCE) {
+      throw std::runtime_error("Function expression is not a reference");
+    }
+    const FunctionTypeNode &functionType =
+        static_cast<const FunctionTypeNode &>(
+            *static_cast<const ReferenceTypeNode &>(**functionNode.valueType)
+                 .type);
+    Function *function = Function::Create(
+        static_cast<FunctionType *>(getLlvmType(functionType, context)),
+        GlobalValue::InternalLinkage, "#func", &module);
     BasicBlock *entryBlock = BasicBlock::Create(context, "entry", function);
     FunctionContext newFunctionContext{function, entryBlock,
                                        IRBuilder<>(entryBlock)};
@@ -143,8 +150,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
                        newSymbolTable);
     }
     if (PrimitiveTypeNode{PrimitiveType::NIL}.equals(
-            *static_cast<const FunctionTypeNode &>(**functionNode.valueType)
-                 .returnType)) {
+            *functionType.returnType)) {
       newFunctionContext.irBuilder.CreateRetVoid();
     }
     verifyFunction(*function);
@@ -298,6 +304,8 @@ static void codegenGlobalDefinition(const DefinitionNode &definition,
   if (isConstantExpression) {
     globalVariable->setInitializer(cast<Constant>(initializerValue));
   } else {
+    globalVariable->setInitializer(
+        Constant::getNullValue(initializerValue->getType()));
     initFunction.irBuilder.CreateStore(initializerValue, globalVariable);
   }
   symbolTable[definition.name] = globalVariable;
