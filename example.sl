@@ -13,4 +13,5 @@ let switch = fn () -> nil {
     }else {
         anFn = fn1;
 }
+anFn(glob);
 };

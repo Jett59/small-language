@@ -1,5 +1,6 @@
 #include "ast.h"
 #include "error.h"
+#include <iostream>
 #include <string>
 
 namespace sl {
@@ -66,6 +67,14 @@ std::string VariableReferenceNode::toString() const {
 }
 std::string CastNode::toString() const {
   return "Cast: "s + (*valueType)->toString() + " " + value->toString();
+}
+std::string CallNode::toString() const {
+  std::string result = "Call: "s + function->toString() + "("s;
+  for (const auto &arg : arguments) {
+    result += arg->toString() + ", "s;
+  }
+  result += ")";
+  return result;
 }
 
 std::unique_ptr<Type> decayReferenceType(std::unique_ptr<Type> type) {
@@ -259,5 +268,41 @@ void CastNode::assignType(SymbolTable &symbolTable,
   if (!value->valueType) {
     throw SlException(line, column, "Cast expression has no type");
   }
+}
+void CallNode::assignType(SymbolTable &symbolTable,
+                          const SymbolTable &allGlobalSymbols) {
+  function->assignType(symbolTable, allGlobalSymbols);
+  auto functionExpressionType =
+      decayReferenceType((*function->valueType)->clone());
+  if (functionExpressionType->type != TypeType::REFERENCE) {
+    throw SlException(line, column,
+                      "Function call is not a reference to a function");
+  }
+  auto &functionType =
+      static_cast<const ReferenceTypeNode &>(*functionExpressionType).type;
+  if (functionType->type != TypeType::FUNCTION) {
+    throw SlException(line, column, "Function call is not a function");
+  }
+  auto &functionTypeNode = static_cast<const FunctionTypeNode &>(*functionType);
+  if (functionTypeNode.arguments.size() != arguments.size()) {
+    throw SlException(line, column, "Not enough arguments to function call");
+  }
+  for (size_t i = 0; i < arguments.size(); ++i) {
+    arguments[i]->assignType(symbolTable, allGlobalSymbols);
+    if (!arguments[i]->valueType) {
+      throw SlException(line, column,
+                        "Argument " + std::to_string(i) + " has no type");
+    }
+    auto argumentType =
+        decayReferenceType(arguments[i]->valueType->get()->clone());
+    if (!argumentType->equals(*functionTypeNode.arguments[i])) {
+      throw SlException(line, column,
+                        "Argument " + std::to_string(i + 1) +
+                            " has wrong type: " + argumentType->toString() +
+                            ", expecting " +
+                            functionTypeNode.arguments[i]->toString());
+    }
+  }
+  valueType = functionTypeNode.returnType->clone();
 }
 } // namespace sl

@@ -158,6 +158,35 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     verifyFunction(*function);
     return function;
   }
+  case AstNodeType::CALL: {
+    const CallNode &callNode = static_cast<const CallNode &>(expression);
+    Value *function =
+        codegenExpression(*callNode.function, context, module, currentFunction,
+                          symbolTable, allGlobalSymbols);
+    function = decayPointer(function, context, currentFunction,
+                            **callNode.function->valueType);
+    std::vector<Value *> argumentValues;
+    argumentValues.reserve(callNode.arguments.size());
+    for (const auto &argument : callNode.arguments) {
+      Value *argumentValue =
+          codegenExpression(*argument, context, module, currentFunction,
+                            symbolTable, allGlobalSymbols);
+      argumentValue = decayPointer(argumentValue, context, currentFunction,
+                                   **argument->valueType);
+      argumentValues.push_back(argumentValue);
+      errs() << "Argument value: " << *argumentValue << "\n";
+    }
+    // Get the function's type. The function value is a pointer so that won't do.
+    const FunctionTypeNode &functionType =
+        static_cast<const FunctionTypeNode &>(
+            *static_cast<const ReferenceTypeNode &>(
+                removeReference(**callNode.function->valueType))
+                 .type);
+    Value *result = currentFunction.irBuilder.CreateCall(
+        static_cast<FunctionType *>(getLlvmType(functionType, context)), function, argumentValues);
+    errs() << "Result: " << *result << "\n";
+    return result;
+  }
   case AstNodeType::CAST: {
     const CastNode &castNode = static_cast<const CastNode &>(expression);
     Value *value =

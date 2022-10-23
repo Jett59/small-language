@@ -25,6 +25,7 @@ enum class AstNodeType {
   IF_STATEMENT,
   VARIABLE_REFERENCE,
   CAST,
+  CALL,
 };
 
 // Forward-declare to allow for use in the symbol table.
@@ -264,6 +265,25 @@ public:
   CastNode(std::unique_ptr<AstNode> value, std::unique_ptr<Type> type)
       : AstNode(AstNodeType::CAST), value(std::move(value)) {
     this->valueType = std::move(type);
+  }
+
+  std::string toString() const override;
+
+  void assignType(SymbolTable &symbolTable,
+                  const SymbolTable &allGlobalSymbols) override;
+};
+class CallNode : public AstNode {
+public:
+  std::unique_ptr<AstNode> function;
+  std::vector<std::unique_ptr<AstNode>> arguments;
+  CallNode(std::unique_ptr<AstNode> function,
+           std::vector<std::unique_ptr<AstNode>> arguments = {})
+      : AstNode(AstNodeType::CALL), function(std::move(function)),
+        arguments(std::move(arguments)) {}
+  CallNode(std::unique_ptr<AstNode> function,
+           std::unique_ptr<AstNode> singleArgument)
+      : AstNode(AstNodeType::CALL), function(std::move(function)) {
+    arguments.push_back(std::move(singleArgument));
   }
 
   std::string toString() const override;

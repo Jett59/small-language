@@ -9,6 +9,8 @@ namespace sl {
 enum class NonTerminal {
   COMPILATION_UNIT,
   EXPRESSION,
+  INCOMPLETE_PARENNED_EXPRESSION_LIST,
+  COMPLETE_PARENNED_EXPRESSION_LIST,
   STATEMENT,
   STATEMENT_LIST,
   TYPE,
@@ -21,6 +23,10 @@ static inline std::string nonTerminalToString(NonTerminal nonTerminal) {
     return "COMPILATION_UNIT";
   case NonTerminal::EXPRESSION:
     return "EXPRESSION";
+  case NonTerminal::INCOMPLETE_PARENNED_EXPRESSION_LIST:
+    return "INCOMPLETE_EXPRESSION_LIST";
+  case NonTerminal::COMPLETE_PARENNED_EXPRESSION_LIST:
+    return "COMPLETE_EXPRESSION_LIST";
   case NonTerminal::STATEMENT:
     return "STATEMENT";
   case NonTerminal::STATEMENT_LIST:

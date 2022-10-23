@@ -226,6 +226,36 @@ static ParserRule parserRules[] = {
     restructureParserRule<1, NonTerminal::EXPRESSION>({TokenType::LEFT_PAREN,
                                                        NonTerminal::EXPRESSION,
                                                        TokenType::RIGHT_PAREN}),
+    parserRule(NonTerminal::INCOMPLETE_PARENNED_EXPRESSION_LIST,
+               {TokenType::LEFT_PAREN, NonTerminal::EXPRESSION},
+               Precedence::LOWEST, Associativity::DEFAULT,
+               listReducer<NonTerminal::INCOMPLETE_PARENNED_EXPRESSION_LIST,
+                           AstNode, -1, 1>),
+    parserRule(NonTerminal::INCOMPLETE_PARENNED_EXPRESSION_LIST,
+               {NonTerminal::INCOMPLETE_PARENNED_EXPRESSION_LIST,
+                TokenType::COMMA, NonTerminal::EXPRESSION},
+               Precedence::LIST_APPEND, Associativity::DEFAULT,
+               listReducer<NonTerminal::INCOMPLETE_PARENNED_EXPRESSION_LIST,
+                           AstNode, 0, 2>),
+    restructureParserRule<0, NonTerminal::COMPLETE_PARENNED_EXPRESSION_LIST>(
+        {NonTerminal::INCOMPLETE_PARENNED_EXPRESSION_LIST,
+         TokenType::RIGHT_PAREN}),
+    simpleRule<NonTerminal::EXPRESSION, CallNode, 1, IndexAndType<0>,
+               IndexAndType<1, AstNodeList>>(
+        {NonTerminal::EXPRESSION,
+         NonTerminal::COMPLETE_PARENNED_EXPRESSION_LIST},
+        Precedence::POSTFIX, Associativity::DEFAULT),
+    // We need one for just a single expression otherwise the parser gets
+    // confused and tries to reduce as ( EXPRESSION ) and gives an error.
+    simpleRule<NonTerminal::EXPRESSION, CallNode, 1, IndexAndType<0>,
+               IndexAndType<2>>({NonTerminal::EXPRESSION, TokenType::LEFT_PAREN,
+                                 NonTerminal::EXPRESSION,
+                                 TokenType::RIGHT_PAREN},
+                                Precedence::POSTFIX, Associativity::DEFAULT),
+    simpleRule<NonTerminal::EXPRESSION, CallNode, 1, IndexAndType<0>>(
+        {NonTerminal::EXPRESSION, TokenType::LEFT_PAREN,
+         TokenType::RIGHT_PAREN},
+        Precedence::POSTFIX, Associativity::DEFAULT),
     simpleRule<NonTerminal::EXPRESSION, IntegerLiteralNode, 0,
                IndexAndType<0, std::string>>(
         {TokenType::INTEGER}, Precedence::DEFAULT, Associativity::DEFAULT),
@@ -330,7 +360,9 @@ static ParserRule parserRules[] = {
          TokenType::RIGHT_BRACE},
         Precedence::DEFAULT, Associativity::RIGHT),
     simpleRule<NonTerminal::EXPRESSION, VariableReferenceNode, 0,
-               IndexAndType<0, std::string>>({TokenType::IDENTIFIER})};
+               IndexAndType<0, std::string>>({TokenType::IDENTIFIER},
+                                             Precedence::LOWEST),
+};
 
 struct RuleMatch {
   bool canReduce;
