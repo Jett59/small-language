@@ -13,6 +13,7 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Utils.h"
 #include <iostream>
 
@@ -174,17 +175,17 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
       argumentValue = decayPointer(argumentValue, context, currentFunction,
                                    **argument->valueType);
       argumentValues.push_back(argumentValue);
-      errs() << "Argument value: " << *argumentValue << "\n";
     }
-    // Get the function's type. The function value is a pointer so that won't do.
+    // Get the function's type. The function value is a pointer so that won't
+    // do.
     const FunctionTypeNode &functionType =
         static_cast<const FunctionTypeNode &>(
             *static_cast<const ReferenceTypeNode &>(
-                removeReference(**callNode.function->valueType))
+                 removeReference(**callNode.function->valueType))
                  .type);
     Value *result = currentFunction.irBuilder.CreateCall(
-        static_cast<FunctionType *>(getLlvmType(functionType, context)), function, argumentValues);
-    errs() << "Result: " << *result << "\n";
+        static_cast<FunctionType *>(getLlvmType(functionType, context)),
+        function, argumentValues);
     return result;
   }
   case AstNodeType::CAST: {
@@ -423,8 +424,8 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
     throw std::runtime_error("Expected compilation unit");
   }
   Function *rawDefinitionsFunction = Function::Create(
-      FunctionType::get(llvm::Type::getVoidTy(llvmContext), false),
-      GlobalValue::ExternalLinkage, "#init", &module);
+      FunctionType::get(llvm::Type::getInt32Ty(llvmContext), false),
+      GlobalValue::ExternalLinkage, "main", &module);
   BasicBlock *rawDefinitionsEntryBlock =
       BasicBlock::Create(llvmContext, "entry", rawDefinitionsFunction);
   FunctionContext rawDefinitionsFunctionContext{
@@ -439,7 +440,7 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
           static_cast<const DefinitionNode &>(*statement);
       GlobalVariable *globalVariable = new GlobalVariable(
           getLlvmType(**statement->valueType, llvmContext), false,
-          GlobalValue::InternalLinkage, nullptr, definition.name);
+          GlobalValue::InternalLinkage, nullptr, "#global");
       module.getGlobalList().push_back(globalVariable);
       allGlobalSymbols[definition.name] = globalVariable;
     }
@@ -456,7 +457,8 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
           rawDefinitionsFunctionContext, symbolTable, allGlobalSymbols);
     }
   }
-  rawDefinitionsFunctionContext.irBuilder.CreateRetVoid();
+  rawDefinitionsFunctionContext.irBuilder.CreateRet(
+      ConstantInt::get(llvmContext, APInt(32, 0)));
   verifyFunction(*rawDefinitionsFunction);
   std::string targetTriple;
   if (initialTargetTriple == "") {
@@ -490,12 +492,18 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
   pass.add(createPromoteMemoryToRegisterPass());
   pass.add(createReassociatePass());
   pass.add(createInstructionCombiningPass());
+  pass.add(createGVNPass());
   pass.add(createAggressiveDCEPass());
   pass.add(createSinkingPass());
   pass.add(createInstructionCombiningPass());
   pass.add(createCFGSimplificationPass());
   pass.add(createInstructionCombiningPass());
+  pass.add(createSCCPPass());
+  pass.add(createDeadCodeEliminationPass());
+  pass.add(createCFGSimplificationPass());
+  pass.add(createInstructionCombiningPass());
   pass.add(createTailCallEliminationPass());
+  pass.add(createSpeculativeExecutionPass());
   pass.add(createPrintModulePass(outs()));
   auto fileType = CGFT_AssemblyFile;
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {

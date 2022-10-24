@@ -1,17 +1,5 @@
-mut glob = 72 as i32;
-let fn1 = fn (a: i32) -> nil {
-    glob = glob + a;
-};
-let fn2 = fn (a: i32) -> nil {
-    glob = glob - a;
-};
-mut anFn = fn1;
+mut result = 0 as i32;
 
-let switch = fn () -> nil {
-    if anFn == fn1 {
-        anFn = fn2;
-    }else {
-        anFn = fn1;
+if result == 7 {
+    result = 7;
 }
-anFn(glob);
-};
