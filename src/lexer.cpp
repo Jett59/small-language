@@ -149,6 +149,7 @@ TokenGetter tokenGetters[] = {
     keywordTokenGetter<TokenType::WHILE, "while">,
     keywordTokenGetter<TokenType::FOR, "for">,
     keywordTokenGetter<TokenType::AS, "as">,
+    keywordTokenGetter<TokenType::RETURN, "return">,
     keywordTokenGetter<TokenType::BOOL_LITERAL, "true">,
     keywordTokenGetter<TokenType::BOOL_LITERAL, "false">,
     keywordTokenGetter<TokenType::NIL, "nil">,

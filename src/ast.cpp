@@ -76,6 +76,9 @@ std::string CallNode::toString() const {
   result += ")";
   return result;
 }
+std::string ReturnNode::toString() const {
+  return "Return: "s + value->toString();
+}
 
 std::unique_ptr<Type> decayReferenceType(std::unique_ptr<Type> type) {
   if (type->type == TypeType::REFERENCE) {
@@ -87,6 +90,36 @@ std::unique_ptr<Type> decayReferenceType(std::unique_ptr<Type> type) {
     }
   } else {
     return type;
+  }
+}
+
+static void staticlyConvert(std::unique_ptr<AstNode> &value,
+                            const Type &originalType, const Type &desiredType) {
+  if (isIntegral(desiredType) && value->type == AstNodeType::INTEGER_LITERAL) {
+    value->valueType = desiredType.clone();
+  } else if (isFloat(desiredType) &&
+             value->type == AstNodeType::FLOAT_LITERAL) {
+    value->valueType = desiredType.clone();
+  }
+}
+
+template <typename NodeClass, AstNodeType nodeType, typename VisitorType>
+static void findInFunction(std::vector<std::unique_ptr<AstNode>> &body,
+                           VisitorType visitor, bool enterSubFunctions) {
+  for (auto &statement : body) {
+    if (statement->type == nodeType) {
+      visitor(static_cast<NodeClass &>(*statement));
+    } else if (enterSubFunctions && statement->type == AstNodeType::FUNCTION) {
+      auto &function = static_cast<FunctionNode &>(*statement);
+      findInFunction<NodeClass, nodeType>(function.body, visitor,
+                                          enterSubFunctions);
+    } else if (statement->type == AstNodeType::IF_STATEMENT) {
+      auto &ifStatement = static_cast<IfStatementNode &>(*statement);
+      findInFunction<NodeClass, nodeType>(ifStatement.thenBody, visitor,
+                                          enterSubFunctions);
+      findInFunction<NodeClass, nodeType>(ifStatement.elseBody, visitor,
+                                          enterSubFunctions);
+    }
   }
 }
 
@@ -104,6 +137,13 @@ void CompilationUnitNode::assignType(SymbolTable &symbolTable,
   for (auto &definition : definitions) {
     definition->assignType(symbolTable, allGlobalDefinitions);
   }
+  findInFunction<ReturnNode, AstNodeType::RETURN>(
+      definitions,
+      [](ReturnNode &returnNode) {
+        throw SlException(returnNode.line, returnNode.column,
+                          "Returning from the root function is disallowed");
+      },
+      false);
 }
 void DefinitionNode::assignType(SymbolTable &symbolTable,
                                 const SymbolTable &allGlobalSymbols) {
@@ -150,6 +190,18 @@ void FunctionNode::assignType(SymbolTable &symbolTable,
     for (auto &statement : body) {
       statement->assignType(newSymbolTable, allGlobalSymbols);
     }
+    findInFunction<ReturnNode, AstNodeType::RETURN>(
+        body,
+        [this](ReturnNode &returnNode) {
+          staticlyConvert(returnNode.value, **returnNode.value->valueType,
+                          *returnType);
+          returnNode.valueType = returnNode.value->valueType->get()->clone();
+          if (!(*returnNode.valueType)->equals(*returnType)) {
+            throw SlException(returnNode.line, returnNode.column,
+                              "Return type mismatch");
+          }
+        },
+        false);
   }
   std::vector<std::unique_ptr<Type>> parameterTypes;
   for (auto &parameter : parameters) {
@@ -189,15 +241,8 @@ void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
     if (leftReferenceType.constant) {
       throw SlException(line, column, "Left side of assignment is a constant");
     }
-    if (isIntegral(*leftReferenceType.type) &&
-        right->type == AstNodeType::INTEGER_LITERAL) {
-      rightType = decayReferenceType(leftReferenceType.type->clone());
-      right->valueType = rightType->clone();
-    } else if (isFloat(*leftReferenceType.type) &&
-               right->type == AstNodeType::FLOAT_LITERAL) {
-      rightType = decayReferenceType(leftReferenceType.type->clone());
-      right->valueType = rightType->clone();
-    }
+    staticlyConvert(right, *rightType, *leftReferenceType.type);
+    rightType = decayReferenceType(right->valueType->get()->clone());
     if (leftReferenceType.type->equals(*rightType)) {
       valueType = leftReferenceType.clone();
     } else {
@@ -209,14 +254,8 @@ void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
   } else {
     auto leftType = decayReferenceType(left->valueType->get()->clone());
     auto rightType = decayReferenceType(right->valueType->get()->clone());
-    if (isIntegral(*leftType) && right->type == AstNodeType::INTEGER_LITERAL) {
-      rightType = leftType->clone();
-      right->valueType = leftType->clone();
-    } else if (isFloat(*leftType) &&
-               right->type == AstNodeType::FLOAT_LITERAL) {
-      rightType = leftType->clone();
-      right->valueType = leftType->clone();
-    }
+    staticlyConvert(right, *rightType, *leftType);
+    rightType = decayReferenceType(right->valueType->get()->clone());
     if (!leftType->equals(*rightType)) {
       throw SlException(
           line, column,
@@ -304,5 +343,14 @@ void CallNode::assignType(SymbolTable &symbolTable,
     }
   }
   valueType = functionTypeNode.returnType->clone();
+}
+void ReturnNode::assignType(SymbolTable &symbolTable,
+                            const SymbolTable &allGlobalSymbols) {
+  value->assignType(symbolTable, allGlobalSymbols);
+  if (!value->valueType) {
+    throw SlException(line, column, "Return value has no type");
+  }
+  // We don't need to assign the type here because it is assigned during return
+  // type checking, which happens when the function has finished type checking.
 }
 } // namespace sl

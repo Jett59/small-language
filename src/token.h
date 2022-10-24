@@ -20,6 +20,7 @@ enum class TokenType {
   WHILE,
   FOR,
   AS,
+  RETURN,
   NIL,
   I8,
   I16,
@@ -106,6 +107,8 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "for";
   case TokenType::AS:
     return "as";
+  case TokenType::RETURN:
+    return "return";
     case TokenType::NIL:
     return "nil";
   case TokenType::I8:

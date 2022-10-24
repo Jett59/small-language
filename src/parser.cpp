@@ -256,6 +256,12 @@ static ParserRule parserRules[] = {
         {NonTerminal::EXPRESSION, TokenType::LEFT_PAREN,
          TokenType::RIGHT_PAREN},
         Precedence::POSTFIX, Associativity::DEFAULT),
+    simpleRule<NonTerminal::STATEMENT, ReturnNode, 0, IndexAndType<1>>(
+        {TokenType::RETURN, NonTerminal::EXPRESSION, TokenType::SEMICOLON},
+        Precedence::DEFINITION), // Fixes the same ambiguity, so we just use it
+                                 // here.
+    simpleRule<NonTerminal::STATEMENT, ReturnNode, 0>(
+        {TokenType::RETURN, TokenType::SEMICOLON}),
     simpleRule<NonTerminal::EXPRESSION, IntegerLiteralNode, 0,
                IndexAndType<0, std::string>>(
         {TokenType::INTEGER}, Precedence::DEFAULT, Associativity::DEFAULT),
@@ -420,7 +426,8 @@ findSymbolMatch(const std::vector<ParserSymbol> &stack, const ParserRule &rule,
       size_t nextMatchingSymbolCount = getMatchingSymbolCount(stack, rule, 1);
       assertThat(nextMatchingSymbolCount != matchingSymbolCount,
                  "Symbol counts are the same???");
-      if (rule.symbols[nextMatchingSymbolCount] == SymbolType{lookahead.type}) {
+      if (nextMatchingSymbolCount != 0 &&
+          rule.symbols[nextMatchingSymbolCount] == SymbolType{lookahead.type}) {
         return RuleMatch{false, true, rule, matchingSymbolCount};
       } else {
         return RuleMatch{true, false, rule, matchingSymbolCount};
@@ -562,7 +569,7 @@ AstNodePointer Parser::parse() {
       lookahead = lexer.nextToken();
       lastSymbolType = lookahead.type;
     }
-    // printStack(stack);
+    //printStack(stack);
   }
   return std::move(std::get<AstNodePointer>(stack[0].value));
 }

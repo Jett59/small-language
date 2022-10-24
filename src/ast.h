@@ -26,6 +26,7 @@ enum class AstNodeType {
   VARIABLE_REFERENCE,
   CAST,
   CALL,
+  RETURN,
 };
 
 // Forward-declare to allow for use in the symbol table.
@@ -284,6 +285,20 @@ public:
            std::unique_ptr<AstNode> singleArgument)
       : AstNode(AstNodeType::CALL), function(std::move(function)) {
     arguments.push_back(std::move(singleArgument));
+  }
+
+  std::string toString() const override;
+
+  void assignType(SymbolTable &symbolTable,
+                  const SymbolTable &allGlobalSymbols) override;
+};
+class ReturnNode : public AstNode {
+public:
+  std::unique_ptr<AstNode> value;
+  ReturnNode(std::unique_ptr<AstNode> value)
+      : AstNode(AstNodeType::RETURN), value(std::move(value)) {}
+  ReturnNode() : AstNode(AstNodeType::RETURN) {
+    value = std::make_unique<NilNode>();
   }
 
   std::string toString() const override;

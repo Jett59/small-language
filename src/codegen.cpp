@@ -389,21 +389,47 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     function.irBuilder.CreateCondBr(conditionValue, trueBranch, falseBranch);
     function.irBuilder.SetInsertPoint(trueBranch);
     SymbolTable newSymbolTable = symbolTable;
+    bool truePathReturns = false;
     for (const auto &statement : ifStatement.thenBody) {
       codegenStatement(*statement, context, module, function, newSymbolTable,
                        allGlobalSymbols);
+      if (statement->type == AstNodeType::RETURN) {
+        truePathReturns = true;
+        break;
+      }
     }
-    function.irBuilder.CreateBr(mergeBranch);
+    if (!truePathReturns) {
+      function.irBuilder.CreateBr(mergeBranch);
+    }
     trueBranch = function.irBuilder.GetInsertBlock();
     function.irBuilder.SetInsertPoint(falseBranch);
     newSymbolTable = symbolTable;
+    bool falsePathReturns = false;
     for (const auto &statement : ifStatement.elseBody) {
       codegenStatement(*statement, context, module, function, newSymbolTable,
                        allGlobalSymbols);
+      if (statement->type == AstNodeType::RETURN) {
+        falsePathReturns = true;
+        break;
+      }
     }
-    function.irBuilder.CreateBr(mergeBranch);
+    if (!falsePathReturns) {
+      function.irBuilder.CreateBr(mergeBranch);
+    }
     falseBranch = function.irBuilder.GetInsertBlock();
-    function.irBuilder.SetInsertPoint(mergeBranch);
+    if (!truePathReturns || !falsePathReturns) {
+      function.irBuilder.SetInsertPoint(mergeBranch);
+    }
+    break;
+  }
+  case AstNodeType::RETURN: {
+    const ReturnNode &returnNode = static_cast<const ReturnNode &>(statement);
+    Value *returnValue =
+        codegenExpression(*returnNode.value, context, module, function,
+                          symbolTable, allGlobalSymbols);
+    returnValue = decayPointer(returnValue, context, function,
+                               **returnNode.value->valueType);
+    function.irBuilder.CreateRet(returnValue);
     break;
   }
   default:
@@ -503,6 +529,9 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
   pass.add(createCFGSimplificationPass());
   pass.add(createInstructionCombiningPass());
   pass.add(createTailCallEliminationPass());
+  pass.add(createInstructionCombiningPass());
+  pass.add(createCFGSimplificationPass());
+  pass.add(createAggressiveDCEPass());
   pass.add(createSpeculativeExecutionPass());
   pass.add(createPrintModulePass(outs()));
   auto fileType = CGFT_AssemblyFile;
