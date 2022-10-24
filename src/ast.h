@@ -213,6 +213,7 @@ public:
   BinaryOperatorType operatorType;
   std::unique_ptr<AstNode> left;
   std::unique_ptr<AstNode> right;
+  std::unique_ptr<Type> operandType;
   BinaryOperatorNode(BinaryOperatorType operatorType,
                      std::unique_ptr<AstNode> left,
                      std::unique_ptr<AstNode> right)

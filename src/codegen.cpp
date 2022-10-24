@@ -274,7 +274,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     } else if (binaryOperatorNode.valueType->get()->type ==
                TypeType::PRIMITIVE) {
       PrimitiveType primitiveType = static_cast<const PrimitiveTypeNode &>(
-                                        *binaryOperatorNode.valueType->get())
+                                        *binaryOperatorNode.operandType)
                                         .primitiveType;
       if (primitiveType == PrimitiveType::NIL) {
         throw std::runtime_error("Cannot perform binary operation on nil");
@@ -307,6 +307,68 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
           return currentFunction.irBuilder.CreateFCmpOEQ(left, right);
         } else {
           throw std::runtime_error("Unsupported type for equality comparison");
+        }
+      }
+      case BinaryOperatorType::NOT_EQUAL: {
+        if (isIntegral(primitiveType) || primitiveType == PrimitiveType::BOOL) {
+          return currentFunction.irBuilder.CreateICmpNE(left, right);
+        } else if (isFloat(primitiveType)) {
+          return currentFunction.irBuilder.CreateFCmpONE(left, right);
+        } else {
+          throw std::runtime_error(
+              "Unsupported type for inequality comparison");
+        }
+      }
+      case BinaryOperatorType::LESS_THAN: {
+        if (isIntegral(primitiveType)) {
+          if (isSigned(primitiveType)) {
+            return currentFunction.irBuilder.CreateICmpSLT(left, right);
+          } else {
+            return currentFunction.irBuilder.CreateICmpULT(left, right);
+          }
+        } else if (isFloat(primitiveType)) {
+          return currentFunction.irBuilder.CreateFCmpOLT(left, right);
+        } else {
+          throw std::runtime_error("Unsupported type for comparison");
+        }
+      }
+      case BinaryOperatorType::LESS_THAN_OR_EQUAL: {
+        if (isIntegral(primitiveType)) {
+          if (isSigned(primitiveType)) {
+            return currentFunction.irBuilder.CreateICmpSLE(left, right);
+          } else {
+            return currentFunction.irBuilder.CreateICmpULE(left, right);
+          }
+        } else if (isFloat(primitiveType)) {
+          return currentFunction.irBuilder.CreateFCmpOLE(left, right);
+        } else {
+          throw std::runtime_error("Unsupported type for comparison");
+        }
+      }
+      case BinaryOperatorType::GREATER_THAN: {
+        if (isIntegral(primitiveType)) {
+          if (isSigned(primitiveType)) {
+            return currentFunction.irBuilder.CreateICmpSGT(left, right);
+          } else {
+            return currentFunction.irBuilder.CreateICmpUGT(left, right);
+          }
+        } else if (isFloat(primitiveType)) {
+          return currentFunction.irBuilder.CreateFCmpOGT(left, right);
+        } else {
+          throw std::runtime_error("Unsupported type for comparison");
+        }
+      }
+      case BinaryOperatorType::GREATER_THAN_OR_EQUAL: {
+        if (isIntegral(primitiveType)) {
+          if (isSigned(primitiveType)) {
+            return currentFunction.irBuilder.CreateICmpSGE(left, right);
+          } else {
+            return currentFunction.irBuilder.CreateICmpUGE(left, right);
+          }
+        } else if (isFloat(primitiveType)) {
+          return currentFunction.irBuilder.CreateFCmpOGE(left, right);
+        } else {
+          throw std::runtime_error("Unsupported type for comparison");
         }
       }
       default:
@@ -438,7 +500,8 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
   }
 }
 
-void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
+void codegen(const AstNode &ast, const std::string &initialTargetTriple,
+             GeneratedFileType outputFileType, const std::string &outputFile) {
   InitializeAllTargetInfos();
   InitializeAllTargets();
   InitializeAllTargetMCs();
@@ -509,7 +572,7 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
   module.setTargetTriple(targetTriple);
   module.setDataLayout(targetMachine->createDataLayout());
   std::error_code ec;
-  raw_fd_ostream dest("output.s", ec, sys::fs::OF_None);
+  raw_fd_ostream dest(outputFile, ec, sys::fs::OF_None);
   if (ec) {
     throw std::runtime_error("Could not open file: " + ec.message());
   }
@@ -521,7 +584,9 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
   pass.add(createInstructionCombiningPass());
   pass.add(createGVNPass());
   pass.add(createPrintModulePass(outs()));
-  auto fileType = CGFT_AssemblyFile;
+  auto fileType = outputFileType == GeneratedFileType::OBJECT
+                      ? CGFT_ObjectFile
+                      : CGFT_AssemblyFile;
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
     throw std::runtime_error("TargetMachine can't emit a file of this type");
   }

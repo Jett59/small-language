@@ -4,7 +4,10 @@
 #include "ast.h"
 
 namespace sl {
-void codegen(const AstNode &ast, const std::string &targetTriple);
-}
+enum class GeneratedFileType { OBJECT, ASSEMBLY };
+
+void codegen(const AstNode &ast, const std::string &targetTriple,
+             GeneratedFileType fileType, const std::string &outputFile);
+} // namespace sl
 
 #endif

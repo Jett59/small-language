@@ -5,7 +5,6 @@
 #include <fstream>
 #include <iostream>
 
-
 using namespace sl;
 
 static void usage(char *program) {
@@ -15,7 +14,9 @@ static void usage(char *program) {
 static void help(char *program) {
   usage(program);
   std::cout << "Options:" << std::endl;
-  std::cout << "-t, --target <triple>\t\tTarget triple" << std::endl;
+  std::cout << "-t, --target <triple>\t\tSpecify the LLVm target triple for "
+               "cross-compilation"
+            << std::endl;
   std::cout << "  -h, --help\t\tShow this help message" << std::endl;
   std::cout << "  -v, --version\t\tShow version information" << std::endl;
 }
@@ -29,6 +30,8 @@ struct Options {
   bool version;
   std::string file;
   std::string target;
+  GeneratedFileType outputFileType = GeneratedFileType::OBJECT;
+  std::string outputFile;
 
   Options(int argc, char **argv) {
     help = false;
@@ -48,12 +51,35 @@ struct Options {
           std::cerr << "Missing target triple" << std::endl;
           exit(1);
         }
+      } else if (arg == "-S") {
+        outputFileType = GeneratedFileType::ASSEMBLY;
+      } else if (arg == "-c") {
+        outputFileType = GeneratedFileType::OBJECT;
+      } else if (arg == "-o") {
+        if (i + 1 < argc) {
+          outputFile = argv[i + 1];
+          i++;
+        } else {
+          std::cerr << "Missing output file" << std::endl;
+          exit(1);
+        }
       } else if (arg[0] == '-') {
         std::cerr << "Unknown option: " << arg << std::endl;
         usage(argv[0]);
         exit(1);
       } else {
         file = arg;
+      }
+    }
+    if (outputFile.empty()) {
+      outputFile = file;
+      if (outputFile.ends_with(".sl")) {
+        outputFile = outputFile.substr(0, outputFile.size() - 3);
+      }
+      if (outputFileType == GeneratedFileType::ASSEMBLY) {
+        outputFile += ".s";
+      } else {
+        outputFile += ".o";
       }
     }
   }
@@ -76,7 +102,7 @@ int main(int argc, char **argv) {
         std::map<std::string, const DefinitionNode &> symbolTable;
         ast->assignType(symbolTable, {});
       }
-      codegen(*ast, options.target);
+      codegen(*ast, options.target, options.outputFileType, options.outputFile);
     } catch (const SlException &e) {
       std::cerr << e.what() << std::endl;
       exit(1);

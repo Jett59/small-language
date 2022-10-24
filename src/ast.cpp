@@ -195,7 +195,8 @@ void FunctionNode::assignType(SymbolTable &symbolTable,
         [this](ReturnNode &returnNode) {
           staticlyConvert(returnNode.value, **returnNode.value->valueType,
                           *returnType);
-          returnNode.valueType = returnNode.value->valueType->get()->clone();
+          returnNode.valueType =
+              decayReferenceType(returnNode.value->valueType->get()->clone());
           if (!(*returnNode.valueType)->equals(*returnType)) {
             throw SlException(returnNode.line, returnNode.column,
                               "Return type mismatch");
@@ -264,8 +265,10 @@ void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
     }
     if (isComparisonOperator(operatorType)) {
       valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::BOOL);
+      operandType = std::move(leftType);
     } else {
-      valueType = std::move(leftType);
+      valueType = leftType->clone();
+      operandType = std::move(leftType);
     }
   }
 }
