@@ -515,24 +515,11 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple) {
   }
   legacy::PassManager pass;
   pass.add(createVerifierPass());
+  pass.add(createTailCallEliminationPass());
   pass.add(createPromoteMemoryToRegisterPass());
   pass.add(createReassociatePass());
   pass.add(createInstructionCombiningPass());
   pass.add(createGVNPass());
-  pass.add(createAggressiveDCEPass());
-  pass.add(createSinkingPass());
-  pass.add(createInstructionCombiningPass());
-  pass.add(createCFGSimplificationPass());
-  pass.add(createInstructionCombiningPass());
-  pass.add(createSCCPPass());
-  pass.add(createDeadCodeEliminationPass());
-  pass.add(createCFGSimplificationPass());
-  pass.add(createInstructionCombiningPass());
-  pass.add(createTailCallEliminationPass());
-  pass.add(createInstructionCombiningPass());
-  pass.add(createCFGSimplificationPass());
-  pass.add(createAggressiveDCEPass());
-  pass.add(createSpeculativeExecutionPass());
   pass.add(createPrintModulePass(outs()));
   auto fileType = CGFT_AssemblyFile;
   if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
