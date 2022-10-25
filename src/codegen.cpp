@@ -129,14 +129,9 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
   case AstNodeType::FUNCTION: {
     const FunctionNode &functionNode =
         static_cast<const FunctionNode &>(expression);
-    // The type of the function is a reference, so get the base type now.
-    if ((*functionNode.valueType)->type != TypeType::REFERENCE) {
-      throw std::runtime_error("Function expression is not a reference");
-    }
     const FunctionTypeNode &functionType =
         static_cast<const FunctionTypeNode &>(
-            *static_cast<const ReferenceTypeNode &>(**functionNode.valueType)
-                 .type);
+            removeReference(**functionNode.valueType));
     Function *function = Function::Create(
         static_cast<FunctionType *>(getLlvmType(functionType, context)),
         GlobalValue::InternalLinkage, "#func", &module);
@@ -146,7 +141,15 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     SymbolTable newSymbolTable = allGlobalSymbols;
     for (size_t i = 0; i < functionNode.parameters.size(); i++) {
       const auto &parameter = functionNode.parameters[i];
-      newSymbolTable[parameter->name] = function->arg_begin() + i;
+      // For consistency with other ways of defining variables, we put this into
+      // an alloca. This ensures that everywhere which is expecting a reference
+      // will work.
+      AllocaInst *alloca = newFunctionContext.irBuilder.CreateAlloca(
+          getLlvmType(*parameter->type, context), nullptr,
+          parameter->name);
+      newFunctionContext.irBuilder.CreateStore(function->arg_begin() + i,
+                                               alloca);
+      newSymbolTable[parameter->name] = alloca;
     }
     for (const auto &statement : functionNode.body) {
       codegenStatement(*statement, context, module, newFunctionContext,
@@ -436,15 +439,11 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     initializerValue = decayAssignmentRhs(
         initializerValue, **definition.valueType,
         **definition.initializer->valueType, context, function);
-    if (definition.constant) {
-      symbolTable[definition.name] = initializerValue;
-    } else {
-      BasicBlock &entryBlock = function.function->getEntryBlock();
-      IRBuilder<> irBuilder(&entryBlock, entryBlock.begin());
-      AllocaInst *alloca = irBuilder.CreateAlloca(initializerValue->getType());
-      function.irBuilder.CreateStore(initializerValue, alloca);
-      symbolTable[definition.name] = alloca;
-    }
+    BasicBlock &entryBlock = function.function->getEntryBlock();
+    IRBuilder<> irBuilder(&entryBlock, entryBlock.begin());
+    AllocaInst *alloca = irBuilder.CreateAlloca(initializerValue->getType());
+    function.irBuilder.CreateStore(initializerValue, alloca);
+    symbolTable[definition.name] = alloca;
     break;
   }
   case AstNodeType::IF_STATEMENT: {
