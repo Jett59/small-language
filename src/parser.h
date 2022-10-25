@@ -14,6 +14,8 @@ enum class NonTerminal {
   STATEMENT,
   STATEMENT_LIST,
   TYPE,
+  INCOMPLETE_PARENNED_TYPE_LIST,
+  COMPLETE_PARENNED_TYPE_LIST,
   NAME_AND_TYPE,
   NAME_AND_TYPE_LIST
 };
@@ -33,9 +35,13 @@ static inline std::string nonTerminalToString(NonTerminal nonTerminal) {
     return "STATEMENT_LIST";
   case NonTerminal::TYPE:
     return "TYPE";
+  case NonTerminal::INCOMPLETE_PARENNED_TYPE_LIST:
+    return "INCOMPLETE_TYPE_LIST";
+  case NonTerminal::COMPLETE_PARENNED_TYPE_LIST:
+    return "COMPLETE_TYPE_LIST";
   case NonTerminal::NAME_AND_TYPE:
     return "NAME_AND_TYPE";
-    case NonTerminal::NAME_AND_TYPE_LIST:
+  case NonTerminal::NAME_AND_TYPE_LIST:
     return "NAME_AND_TYPE_LIST";
   }
   return "UNKNOWN";

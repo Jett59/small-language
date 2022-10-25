@@ -21,6 +21,7 @@ enum class TokenType {
   FOR,
   AS,
   RETURN,
+  EXTERN,
   NIL,
   I8,
   I16,
@@ -109,7 +110,9 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "as";
   case TokenType::RETURN:
     return "return";
-    case TokenType::NIL:
+  case TokenType::EXTERN:
+    return "extern";
+  case TokenType::NIL:
     return "nil";
   case TokenType::I8:
     return "i8";
@@ -197,7 +200,7 @@ static inline std::string tokenTypeToString(TokenType tokenType) {
     return "[";
   case TokenType::RIGHT_BRACKET:
     return "]";
-    case TokenType::ARROW:
+  case TokenType::ARROW:
     return "->";
   }
   return "unknown";

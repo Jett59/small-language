@@ -79,6 +79,9 @@ std::string CallNode::toString() const {
 std::string ReturnNode::toString() const {
   return "Return: "s + value->toString();
 }
+std::string ExternalNode::toString() const {
+  return "ExternalFunction: "s + name + ": "s + (*valueType)->toString();
+}
 
 std::unique_ptr<Type> decayReferenceType(std::unique_ptr<Type> type) {
   if (type->type == TypeType::REFERENCE) {
@@ -337,6 +340,9 @@ void CallNode::assignType(SymbolTable &symbolTable,
     }
     auto argumentType =
         decayReferenceType(arguments[i]->valueType->get()->clone());
+    staticlyConvert(arguments[i], *argumentType,
+                    *functionTypeNode.arguments[i]);
+    argumentType = decayReferenceType(arguments[i]->valueType->get()->clone());
     if (!argumentType->equals(*functionTypeNode.arguments[i])) {
       throw SlException(line, column,
                         "Argument " + std::to_string(i + 1) +
@@ -355,5 +361,10 @@ void ReturnNode::assignType(SymbolTable &symbolTable,
   }
   // We don't need to assign the type here because it is assigned during return
   // type checking, which happens when the function has finished type checking.
+}
+void ExternalNode::assignType(SymbolTable &symbolTable,
+                              const SymbolTable &allGlobalSymbols) {
+  // We already assigned our type in the constructor so we don't need to do
+  // anything here.
 }
 } // namespace sl

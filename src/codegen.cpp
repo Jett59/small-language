@@ -159,6 +159,19 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     verifyFunction(*function);
     return function;
   }
+  case AstNodeType::EXTERNAL: {
+    const auto &externalNode = static_cast<const ExternalNode &>(expression);
+    const auto &externalType = removeReference(**externalNode.valueType);
+    if (externalType.type == TypeType::FUNCTION) {
+      FunctionType *functionType =
+          static_cast<FunctionType *>(getLlvmType(externalType, context));
+      return module.getOrInsertFunction(externalNode.name, functionType)
+          .getCallee();
+    } else {
+      return module.getOrInsertGlobal(externalNode.name,
+                                      getLlvmType(externalType, context));
+    }
+  }
   case AstNodeType::CALL: {
     const CallNode &callNode = static_cast<const CallNode &>(expression);
     Value *function =

@@ -18,7 +18,8 @@ struct ParserSymbol {
   SymbolType type;
   std::variant<std::nullptr_t, AstNodePointer, AstNodeList, std::string,
                std::unique_ptr<Type>, std::unique_ptr<NameAndType>,
-               std::vector<std::unique_ptr<NameAndType>>>
+               std::vector<std::unique_ptr<NameAndType>>,
+               std::vector<std::unique_ptr<Type>>>
       value;
   int line, column;
 };
@@ -309,14 +310,37 @@ static ParserRule parserRules[] = {
          TokenType::RIGHT_PAREN, TokenType::ARROW, NonTerminal::TYPE,
          TokenType::LEFT_BRACE, NonTerminal::STATEMENT_LIST,
          TokenType::RIGHT_BRACE},
-        Precedence::DEFAULT, Associativity::DEFAULT),
+        Precedence::DEFINITION, Associativity::DEFAULT),
     simpleRule<NonTerminal::EXPRESSION, FunctionNode, 0,
                IndexAndType<4, std::unique_ptr<Type>>,
                IndexAndType<6, AstNodeList>>(
         {TokenType::FN, TokenType::LEFT_PAREN, TokenType::RIGHT_PAREN,
          TokenType::ARROW, NonTerminal::TYPE, TokenType::LEFT_BRACE,
          NonTerminal::STATEMENT_LIST, TokenType::RIGHT_BRACE},
-        Precedence::DEFAULT, Associativity::DEFAULT),
+        Precedence::DEFINITION, Associativity::DEFAULT),
+    parserRule(
+        NonTerminal::INCOMPLETE_PARENNED_TYPE_LIST,
+        {TokenType::LEFT_PAREN, NonTerminal::TYPE}, Precedence::LOWEST,
+        Associativity::DEFAULT,
+        listReducer<NonTerminal::INCOMPLETE_PARENNED_TYPE_LIST, Type, -1, 1>),
+    parserRule(
+        NonTerminal::INCOMPLETE_PARENNED_TYPE_LIST,
+        {NonTerminal::INCOMPLETE_PARENNED_TYPE_LIST, TokenType::COMMA,
+         NonTerminal::TYPE},
+        Precedence::DEFAULT, Associativity::DEFAULT,
+        listReducer<NonTerminal::INCOMPLETE_PARENNED_TYPE_LIST, Type, 0, 2>),
+    restructureParserRule<0, NonTerminal::COMPLETE_PARENNED_TYPE_LIST>(
+        {NonTerminal::INCOMPLETE_PARENNED_TYPE_LIST, TokenType::RIGHT_PAREN}),
+    simpleRule<NonTerminal::TYPE, FunctionTypeNode, 0,
+               IndexAndType<0, std::vector<std::unique_ptr<Type>>>,
+               IndexAndType<2, std::unique_ptr<Type>>>(
+        {NonTerminal::COMPLETE_PARENNED_TYPE_LIST, TokenType::ARROW,
+         NonTerminal::TYPE}),
+    simpleRule < NonTerminal::EXPRESSION,
+    ExternalNode,
+    0,
+    IndexAndType<1, std::unique_ptr<NameAndType>>>(
+        {TokenType::EXTERN, NonTerminal::NAME_AND_TYPE}),
     simpleRule<NonTerminal::EXPRESSION, CastNode, 1, IndexAndType<0>,
                IndexAndType<2, std::unique_ptr<Type>>>(
         {NonTerminal::EXPRESSION, TokenType::AS, NonTerminal::TYPE},
@@ -352,7 +376,7 @@ static ParserRule parserRules[] = {
     binaryOperatorRule<BinaryOperatorType::ASSIGN>(
         TokenType::EQUALS, Precedence::ASSIGNMENT, Associativity::RIGHT),
     simpleRule<NonTerminal::EXPRESSION, NilNode, 0>(
-        {TokenType::NIL}, Precedence::DEFAULT, Associativity::DEFAULT),
+        {TokenType::NIL}, Precedence::LOWEST, Associativity::DEFAULT),
     simpleRule<NonTerminal::STATEMENT, IfStatementNode, 0, IndexAndType<1>,
                IndexAndType<3, AstNodeList>>(
         {TokenType::IF, NonTerminal::EXPRESSION, TokenType::LEFT_BRACE,
@@ -550,6 +574,7 @@ AstNodePointer Parser::parse() {
       }
     }
     if (!dominantMatch) {
+      printStack(stack);
       throw SlException(lookahead.line, lookahead.column,
                         "Syntax error: unexpected "s +
                             symbolTypeToString(lastSymbolType));
@@ -569,7 +594,7 @@ AstNodePointer Parser::parse() {
       lookahead = lexer.nextToken();
       lastSymbolType = lookahead.type;
     }
-    //printStack(stack);
+    // printStack(stack);
   }
   return std::move(std::get<AstNodePointer>(stack[0].value));
 }
