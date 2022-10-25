@@ -1,12 +1,15 @@
 #include "codegen.h"
-#include "llvm/IR/Function.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
@@ -145,8 +148,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
       // an alloca. This ensures that everywhere which is expecting a reference
       // will work.
       AllocaInst *alloca = newFunctionContext.irBuilder.CreateAlloca(
-          getLlvmType(*parameter->type, context), nullptr,
-          parameter->name);
+          getLlvmType(*parameter->type, context), nullptr, parameter->name);
       newFunctionContext.irBuilder.CreateStore(function->arg_begin() + i,
                                                alloca);
       newSymbolTable[parameter->name] = alloca;
@@ -159,7 +161,6 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
             *functionType.returnType)) {
       newFunctionContext.irBuilder.CreateRetVoid();
     }
-    verifyFunction(*function);
     return function;
   }
   case AstNodeType::EXTERNAL: {
@@ -560,7 +561,9 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   }
   rawDefinitionsFunctionContext.irBuilder.CreateRet(
       ConstantInt::get(llvmContext, APInt(32, 0)));
-  verifyFunction(*rawDefinitionsFunction);
+  if (verifyModule(module, &errs())) {
+    throw std::runtime_error("Module verification failed");
+  }
   std::string targetTriple;
   if (initialTargetTriple == "") {
     targetTriple = sys::getDefaultTargetTriple();
@@ -583,26 +586,34 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   }
   module.setTargetTriple(targetTriple);
   module.setDataLayout(targetMachine->createDataLayout());
+  LoopAnalysisManager loopAnalysisManager;
+  FunctionAnalysisManager functionAnalysisManager;
+  CGSCCAnalysisManager cGSCCAnalysisManager;
+  ModuleAnalysisManager moduleAnalysisManager;
+  PassBuilder passBuilder;
+  passBuilder.registerModuleAnalyses(moduleAnalysisManager);
+  passBuilder.registerCGSCCAnalyses(cGSCCAnalysisManager);
+  passBuilder.registerFunctionAnalyses(functionAnalysisManager);
+  passBuilder.registerLoopAnalyses(loopAnalysisManager);
+  passBuilder.crossRegisterProxies(loopAnalysisManager, functionAnalysisManager,
+                                   cGSCCAnalysisManager, moduleAnalysisManager);
+  ModulePassManager modulePassManager =
+      passBuilder.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
+  modulePassManager.run(module, moduleAnalysisManager);
   std::error_code ec;
   raw_fd_ostream dest(outputFile, ec, sys::fs::OF_None);
   if (ec) {
     throw std::runtime_error("Could not open file: " + ec.message());
   }
-  legacy::PassManager pass;
-  pass.add(createVerifierPass());
-  pass.add(createTailCallEliminationPass());
-  pass.add(createPromoteMemoryToRegisterPass());
-  pass.add(createReassociatePass());
-  pass.add(createInstructionCombiningPass());
-  pass.add(createGVNPass());
-  pass.add(createPrintModulePass(outs()));
   auto fileType = outputFileType == GeneratedFileType::OBJECT
                       ? CGFT_ObjectFile
                       : CGFT_AssemblyFile;
-  if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
+  legacy::PassManager legacyPassManager;
+  if (targetMachine->addPassesToEmitFile(legacyPassManager, dest, nullptr,
+                                         fileType)) {
     throw std::runtime_error("TargetMachine can't emit a file of this type");
   }
-  pass.run(module);
+  legacyPassManager.run(module);
   dest.flush();
 }
 } // namespace sl
