@@ -150,7 +150,10 @@ expression-list: expression {
 }
 
 expression:
-  IDENTIFIER {
+  "(" expression ")" {
+    $$ = $2;
+}
+| IDENTIFIER {
     $$ = makeAstNode<VariableReferenceNode>(@1, $1);
 }
 | STRING_LITERAL {
