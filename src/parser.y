@@ -88,6 +88,16 @@ static std::unique_ptr<NodeClass> makeAstNode(sl::location &location, ArgumentTy
 %type <std::unique_ptr<NameAndType>> name-and-type
 %type <std::vector<std::unique_ptr<NameAndType>>> name-and-type-list
 
+%left "+" "-"
+%left "*" "/" "%"
+%left "&" "|" "^" "~"
+%left "==" "!=" "<" "<=" ">" ">="
+%left "&&" "||"
+%right "="
+
+/* For function calls */
+%left "("
+
 %%
 
 compilation-unit: statement-list {
@@ -118,6 +128,26 @@ statement:
 | "if" expression "{" statement-list "}" "else" "{" statement-list "}" {
     $$ = makeAstNode<IfStatementNode>(@1, $2, $4, $8);
 }
+| "return" expression ";" {
+    $$ = makeAstNode<ReturnNode>(@1, $2);
+}
+| "return" ";" {
+    $$ = makeAstNode<ReturnNode>(@1);
+}
+| expression ";" {
+    $$ = $1;
+}
+
+expression-list: expression {
+    std::vector<std::unique_ptr<AstNode>> list;
+    list.push_back($1);
+    $$ = std::move(list);
+}
+| expression-list "," expression {
+    auto list = $1;
+    list.push_back($3);
+    $$ = std::move(list);
+}
 
 expression:
   IDENTIFIER {
@@ -140,6 +170,45 @@ expression:
 }
 | "fn" "(" name-and-type-list ")" "->" type "{" statement-list "}" {
     $$ = makeAstNode<FunctionNode>(@1, $6, $3, $8);
+}
+| "extern" name-and-type {
+    $$ = makeAstNode<ExternalNode>(@1, $2);
+}
+| expression "(" expression-list ")" {
+    $$ = makeAstNode<CallNode>(@1, $1, $3);
+}
+| expression "+" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::ADD, $1, $3);
+}
+| expression "-" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::SUBTRACT, $1, $3);
+}
+| expression "*" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::MULTIPLY, $1, $3);
+}
+| expression "/" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::DIVIDE, $1, $3);
+}
+| expression "%" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::MODULO, $1, $3);
+}
+| expression "==" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::EQUAL, $1, $3);
+}
+| expression "!=" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::NOT_EQUAL, $1, $3);
+}
+| expression "<" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::LESS_THAN, $1, $3);
+}
+| expression "<=" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::LESS_THAN_OR_EQUAL, $1, $3);
+}
+| expression ">" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::GREATER_THAN, $1, $3);
+}
+| expression ">=" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::GREATER_THAN_OR_EQUAL, $1, $3);
 }
 
 name-and-type-list: name-and-type {
@@ -210,6 +279,9 @@ type:
     }
     | "nil" {
         $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::NIL);
+    }
+    | "(" type-list ")" "->" type {
+        $$ = make_unique<FunctionTypeNode>($2, $5);
     }
 
 %%
