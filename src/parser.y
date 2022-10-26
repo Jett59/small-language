@@ -83,6 +83,10 @@ static std::unique_ptr<NodeClass> makeAstNode(sl::location &location, ArgumentTy
 
 %type <std::unique_ptr<AstNode>> statement expression
 %type <std::vector<std::unique_ptr<AstNode>>> expression-list statement-list
+%type <std::unique_ptr<Type>> type
+%type <std::vector<std::unique_ptr<Type>>> type-list
+%type <std::unique_ptr<NameAndType>> name-and-type
+%type <std::vector<std::unique_ptr<NameAndType>>> name-and-type-list
 
 %%
 
@@ -108,25 +112,104 @@ statement:
 | "mut" IDENTIFIER "=" expression ";" {
     $$ = makeAstNode<DefinitionNode>(@1, $2, $4, false);
 }
+| "if" expression "{" statement-list "}" {
+    $$ = makeAstNode<IfStatementNode>(@1, $2, $4);
+}
+| "if" expression "{" statement-list "}" "else" "{" statement-list "}" {
+    $$ = makeAstNode<IfStatementNode>(@1, $2, $4, $8);
+}
 
 expression:
-    IDENTIFIER {
-        $$ = makeAstNode<VariableReferenceNode>(@1, $1);
-    }
-    | STRING_LITERAL {
-        $$ = makeAstNode<StringLiteralNode>(@1, $1);
-    }
+  IDENTIFIER {
+    $$ = makeAstNode<VariableReferenceNode>(@1, $1);
+}
+| STRING_LITERAL {
+    $$ = makeAstNode<StringLiteralNode>(@1, $1);
+}
     | INTEGER_LITERAL {
-        $$ = makeAstNode<IntegerLiteralNode>(@1, $1);
+    $$ = makeAstNode<IntegerLiteralNode>(@1, $1);
     }
     | FLOAT_LITERAL {
-        $$ = makeAstNode<FloatLiteralNode>(@1, $1);
+    $$ = makeAstNode<FloatLiteralNode>(@1, $1);
+}
+| "true" {
+    $$ = makeAstNode<BooleanLiteralNode>(@1, true);
+}
+| "false" {
+    $$ = makeAstNode<BooleanLiteralNode>(@1, false);
+}
+| "fn" "(" name-and-type-list ")" "->" type "{" statement-list "}" {
+    $$ = makeAstNode<FunctionNode>(@1, $6, $3, $8);
+}
+
+name-and-type-list: name-and-type {
+    std::vector<std::unique_ptr<NameAndType>> list;
+    list.push_back(std::move($1));
+    $$ = std::move(list);
+}
+| name-and-type-list "," name-and-type {
+    auto list = $1;
+    list.push_back($3);
+    $$ = std::move(list);
+}
+
+name-and-type: IDENTIFIER ":" type {
+    $$ = make_unique<NameAndType>($1, $3);
+}
+
+type-list: type {
+    std::vector<std::unique_ptr<Type>> list;
+    list.push_back(std::move($1));
+    $$ = std::move(list);
+}
+| type-list "," type {
+    auto list = $1;
+    list.push_back($3);
+    $$ = std::move(list);
+}
+
+type:
+    "i8" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::I8);
     }
-    | "true" {
-        $$ = makeAstNode<BooleanLiteralNode>(@1, true);
+    | "i16" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::I16);
     }
-    | "false" {
-        $$ = makeAstNode<BooleanLiteralNode>(@1, false);
+        | "i32" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::I32);
+    }
+    | "i64" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::I64);
+    }
+    | "u8" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::U8);
+    }
+    | "u16" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::U16);
+    }
+    | "u32" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::U32);
+    }
+    | "u64" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::U64);
+    }
+    | "f32" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::F32);
+    }
+    | "f64" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::F64);
+    }
+    | "bool" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::BOOL);
+    }
+    | "char" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::CHAR);
+    }
+    | "string" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::STRING);
+    }
+    | "nil" {
+        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::NIL);
     }
 
 %%
