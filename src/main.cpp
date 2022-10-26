@@ -1,7 +1,7 @@
 #include "codegen.h"
 #include "error.h"
 #include "lexer.h"
-#include "parser.h"
+#include "parser.hh"
 #include <fstream>
 #include <iostream>
 
@@ -95,9 +95,10 @@ int main(int argc, char **argv) {
   } else if (!options.file.empty()) {
     std::ifstream input(options.file);
     Lexer lexer(options.file, input);
-    Parser parser(lexer);
+    std::unique_ptr<AstNode> ast;
+    Parser parser(lexer, options.file, &ast);
     try {
-      auto ast = parser.parse();
+      parser.parse();
       {
         std::map<std::string, const DefinitionNode &> symbolTable;
         ast->assignType(symbolTable, {});

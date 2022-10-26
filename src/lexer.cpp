@@ -1,5 +1,4 @@
 #include "lexer.h"
-#include "token.h"
 #include <optional>
 
 namespace sl {
@@ -18,25 +17,29 @@ char Lexer::readCharacter() {
     c = buffer[bufferIndex++];
   }
   if (c == '\n') {
-    line++;
-    column = 1;
+    currentLocation.end.line++;
+    currentLocation.end.column = 1;
   } else {
-    column++;
+    currentLocation.end.column++;
   }
   return c;
 }
 void Lexer::unreadCharacter() {
   if (bufferIndex > 0) {
     if (buffer[bufferIndex] == '\n') {
-      line--;
-      column = 1;
+      currentLocation.end.line--;
+      currentLocation.end.column = 1;
     } else {
-      column--;
+      currentLocation.end.column--;
     }
     bufferIndex--;
   }
 }
-static std::optional<Token> getIdentifier(Lexer &lexer) {
+
+using SymbolType = Parser::symbol_type;
+
+static std::optional<SymbolType> getIdentifier(Lexer &lexer,
+                                               location &location) {
   std::string result;
   char c = lexer.readCharacter();
   if (!isalpha(c)) {
@@ -50,10 +53,10 @@ static std::optional<Token> getIdentifier(Lexer &lexer) {
   } while (isalnum(c));
   lexer.unreadCharacter();
   result.pop_back();
-  return Token{.type = TokenType::IDENTIFIER, .value = result};
+  return Parser::make_IDENTIFIER(result, location);
 }
 
-static std::optional<Token> getNumber(Lexer &lexer) {
+static std::optional<SymbolType> getNumber(Lexer &lexer, location &location) {
   std::string result;
   char c = lexer.readCharacter();
   if (!isdigit(c)) {
@@ -73,14 +76,14 @@ static std::optional<Token> getNumber(Lexer &lexer) {
   } else {
     lexer.unreadCharacter();
     result.pop_back();
-    return Token{.type = TokenType::INTEGER, .value = result};
+    return Parser::make_INTEGER_LITERAL(result, location);
   }
   lexer.unreadCharacter();
   result.pop_back();
-  return Token{.type = TokenType::FLOAT, .value = result};
+  return Parser::make_FLOAT_LITERAL(result, location);
 }
 
-static std::optional<Token> getString(Lexer &lexer) {
+static std::optional<SymbolType> getString(Lexer &lexer, location &location) {
   std::string result;
   char c = lexer.readCharacter();
   if (c != '"') {
@@ -99,24 +102,21 @@ static std::optional<Token> getString(Lexer &lexer) {
       result += c;
     }
   } while (c != '"');
-  return Token{
-      .type = TokenType::STRING,
-      .value = result.substr(
-          1,
-          result.length() -
-              2)}; // -2 because it is the length which is two characters less.
+  return Parser::make_STRING_LITERAL(result.substr(1, result.length() - 2),
+                                     location);
 }
 
-using TokenGetter = std::optional<Token> (*)(Lexer &);
+using TokenGetter = std::optional<SymbolType> (*)(Lexer &, location &);
 
-template <TokenType tokenType, char c>
-std::optional<Token> singleCharacterTokenGetter(Lexer &lexer) {
+template <char c, SymbolType (*tokenConstructor)(location location)>
+std::optional<SymbolType> singleCharacterTokenGetter(Lexer &lexer,
+                                                     location &location) {
   char read = lexer.readCharacter();
   if (read != c) {
     lexer.unreadCharacter();
     return std::nullopt;
   }
-  return Token{.type = tokenType, .value = std::string(1, c)};
+  return tokenConstructor(location);
 }
 
 // Helper struct to allow passing literal strings to template parameters.
@@ -129,119 +129,122 @@ template <size_t size> struct StringLiteral {
   constexpr char operator[](size_t i) const { return value[i]; }
 };
 
-template <TokenType tokenType, StringLiteral string>
-std::optional<Token> keywordTokenGetter(Lexer &lexer) {
+template <StringLiteral string,
+          SymbolType (*tokenConstructor)(location location)>
+std::optional<SymbolType> keywordTokenGetter(Lexer &lexer, location &location) {
   for (int i = 0; string[i] != '\0'; i++) {
     char read = lexer.readCharacter();
     if (read != string[i]) {
       return std::nullopt;
     }
   }
-  return Token{.type = tokenType, .value = std::string(string.value)};
+  return tokenConstructor(location);
 }
 
 TokenGetter tokenGetters[] = {
-    keywordTokenGetter<TokenType::LET, "let">,
-    keywordTokenGetter<TokenType::MUT, "mut">,
-    keywordTokenGetter<TokenType::FN, "fn">,
-    keywordTokenGetter<TokenType::IF, "if">,
-    keywordTokenGetter<TokenType::ELSE, "else">,
-    keywordTokenGetter<TokenType::WHILE, "while">,
-    keywordTokenGetter<TokenType::FOR, "for">,
-    keywordTokenGetter<TokenType::AS, "as">,
-    keywordTokenGetter<TokenType::RETURN, "return">,
-  keywordTokenGetter<TokenType::EXTERN, "extern">,
-    keywordTokenGetter<TokenType::BOOL_LITERAL, "true">,
-    keywordTokenGetter<TokenType::BOOL_LITERAL, "false">,
-    keywordTokenGetter<TokenType::NIL, "nil">,
-    keywordTokenGetter<TokenType::I8, "i8">,
-    keywordTokenGetter<TokenType::I16, "i16">,
-    keywordTokenGetter<TokenType::I32, "i32">,
-    keywordTokenGetter<TokenType::I64, "i64">,
-    keywordTokenGetter<TokenType::U8, "u8">,
-    keywordTokenGetter<TokenType::U16, "u16">,
-    keywordTokenGetter<TokenType::U32, "u32">,
-    keywordTokenGetter<TokenType::U64, "u64">,
-    keywordTokenGetter<TokenType::F32, "f32">,
-    keywordTokenGetter<TokenType::F64, "f64">,
-    keywordTokenGetter<TokenType::BOOL, "bool">,
-    keywordTokenGetter<TokenType::CHAR, "char">,
-    keywordTokenGetter<TokenType::STRING_TYPE, "string">,
+    keywordTokenGetter<"let", Parser::make_LET>,
+    keywordTokenGetter<"mut", Parser::make_MUT>,
+    keywordTokenGetter<"fn", Parser::make_FN>,
+    keywordTokenGetter<"if", Parser::make_IF>,
+    keywordTokenGetter<"else", Parser::make_ELSE>,
+    keywordTokenGetter<"while", Parser::make_WHILE>,
+    keywordTokenGetter<"for", Parser::make_FOR>,
+    keywordTokenGetter<"as", Parser::make_AS>,
+    keywordTokenGetter<"return", Parser::make_RETURN>,
+    keywordTokenGetter<"extern", Parser::make_EXTERN>,
+    keywordTokenGetter<"true", Parser::make_TRUE>,
+    keywordTokenGetter<"false", Parser::make_FALSE>,
+    keywordTokenGetter<"nil", Parser::make_NIL>,
+    keywordTokenGetter<"i8", Parser::make_I8>,
+    keywordTokenGetter<"i16", Parser::make_I16>,
+    keywordTokenGetter<"i32", Parser::make_I32>,
+    keywordTokenGetter<"i64", Parser::make_I64>,
+    keywordTokenGetter<"u8", Parser::make_U8>,
+    keywordTokenGetter<"u16", Parser::make_U16>,
+    keywordTokenGetter<"u32", Parser::make_U32>,
+    keywordTokenGetter<"u64", Parser::make_U64>,
+    keywordTokenGetter<"f32", Parser::make_F32>,
+    keywordTokenGetter<"f64", Parser::make_F64>,
+    keywordTokenGetter<"bool", Parser::make_BOOL>,
+    keywordTokenGetter<"char", Parser::make_CHAR>,
+    keywordTokenGetter<"string", Parser::make_STRING>,
     getIdentifier,
     getNumber,
     getString,
-    keywordTokenGetter<TokenType::ARROW, "->">,
-    singleCharacterTokenGetter<TokenType::LEFT_PAREN, '('>,
-    singleCharacterTokenGetter<TokenType::RIGHT_PAREN, ')'>,
-    singleCharacterTokenGetter<TokenType::LEFT_BRACE, '{'>,
-    singleCharacterTokenGetter<TokenType::RIGHT_BRACE, '}'>,
-    singleCharacterTokenGetter<TokenType::COMMA, ','>,
-    singleCharacterTokenGetter<TokenType::DOT, '.'>,
-    singleCharacterTokenGetter<TokenType::MINUS, '-'>,
-    singleCharacterTokenGetter<TokenType::PLUS, '+'>,
-    singleCharacterTokenGetter<TokenType::SEMICOLON, ';'>,
-    singleCharacterTokenGetter<TokenType::SLASH, '/'>,
-    singleCharacterTokenGetter<TokenType::STAR, '*'>,
-    singleCharacterTokenGetter<TokenType::BANG, '!'>,
-    keywordTokenGetter<TokenType::EQUALS_EQUALS, "==">,
-    keywordTokenGetter<TokenType::BANG_EQUALS, "!=">,
-    singleCharacterTokenGetter<TokenType::EQUALS, '='>,
-    keywordTokenGetter<TokenType::LESS_EQUALS, "<=">,
-    singleCharacterTokenGetter<TokenType::LESS, '<'>,
-    keywordTokenGetter<TokenType::GREATER_EQUALS, ">=">,
-    singleCharacterTokenGetter<TokenType::GREATER, '>'>,
-    singleCharacterTokenGetter<TokenType::PERCENT, '%'>,
-    keywordTokenGetter<TokenType::AMPERSAND_AMPERSAND, "&&">,
-    singleCharacterTokenGetter<TokenType::AMPERSAND, '&'>,
-    keywordTokenGetter<TokenType::PIPE_PIPE, "||">,
-    singleCharacterTokenGetter<TokenType::PIPE, '|'>,
-    singleCharacterTokenGetter<TokenType::CARET, '^'>,
-    singleCharacterTokenGetter<TokenType::TILDE, '~'>,
-    singleCharacterTokenGetter<TokenType::QUESTION, '?'>,
-    singleCharacterTokenGetter<TokenType::COLON, ':'>,
+    keywordTokenGetter<"->", Parser::make_ARROW>,
+    singleCharacterTokenGetter<'(', Parser::make_LEFT_PAREN>,
+    singleCharacterTokenGetter<')', Parser::make_RIGHT_PAREN>,
+    singleCharacterTokenGetter<'{', Parser::make_LEFT_BRACE>,
+    singleCharacterTokenGetter<'}', Parser::make_RIGHT_BRACE>,
+    singleCharacterTokenGetter<',', Parser::make_COMMA>,
+    singleCharacterTokenGetter<'.', Parser::make_DOT>,
+    singleCharacterTokenGetter<'-', Parser::make_MINUS>,
+    singleCharacterTokenGetter<'+', Parser::make_PLUS>,
+    singleCharacterTokenGetter<';', Parser::make_SEMICOLON>,
+    singleCharacterTokenGetter<'/', Parser::make_SLASH>,
+    singleCharacterTokenGetter<'*', Parser::make_STAR>,
+    keywordTokenGetter<"!=", Parser::make_BANG_EQUALS>,
+    singleCharacterTokenGetter<'!', Parser::make_BANG>,
+    keywordTokenGetter<"==", Parser::make_EQUALS_EQUALS>,
+    singleCharacterTokenGetter<'=', Parser::make_EQUALS>,
+    keywordTokenGetter<"<=", Parser::make_LESS_EQUALS>,
+    singleCharacterTokenGetter<'<', Parser::make_LESS>,
+    keywordTokenGetter<">=", Parser::make_GREATER_EQUALS>,
+    singleCharacterTokenGetter<'>', Parser::make_GREATER>,
+    singleCharacterTokenGetter<'%', Parser::make_PERCENT>,
+    keywordTokenGetter<"&&", Parser::make_AMPERSAND_AMPERSAND>,
+    singleCharacterTokenGetter<'&', Parser::make_AMPERSAND>,
+    keywordTokenGetter<"||", Parser::make_PIPE_PIPE>,
+    singleCharacterTokenGetter<'|', Parser::make_PIPE>,
+    singleCharacterTokenGetter<'^', Parser::make_CARET>,
+    singleCharacterTokenGetter<'~', Parser::make_TILDE>,
+    singleCharacterTokenGetter<'?', Parser::make_QUESTION>,
+    singleCharacterTokenGetter<':', Parser::make_COLON>,
 };
 
-Token Lexer::nextToken() {
+SymbolType Lexer::nextToken() {
   char c;
   do {
     c = readCharacter();
     if (input.eof()) {
-      return Token{.type = TokenType::END, .value = ""};
+      return Parser::make_YYEOF(currentLocation);
     }
   } while (isspace(c));
   unreadCharacter();
-  int startLine = line, startColumn = column;
+  currentLocation.begin =
+      currentLocation.end; // The previous end is the new start.
+  location startLocation = currentLocation;
   size_t startBufferIndex = bufferIndex;
-  std::optional<Token> bestMatch;
+  SymbolType bestMatch;
   size_t bestFinalColumn = 0;
   size_t bestFinalLine = 0;
   size_t bestFinalBufferIndex = 0;
   for (auto getter : tokenGetters) {
-    auto token = getter(*this);
+    auto token = getter(*this, currentLocation);
     if (token) {
-      if (!bestMatch || line > bestFinalLine || column > bestFinalColumn) {
-        bestMatch = token;
+      size_t line = currentLocation.end.line;
+      size_t column = currentLocation.end.column;
+      if (bestMatch.empty() || line > bestFinalLine || column > bestFinalColumn) {
+        bestMatch.move(*token);
         bestFinalColumn = column;
         bestFinalLine = line;
         bestFinalBufferIndex = bufferIndex;
       }
     }
     bufferIndex = startBufferIndex;
-    line = startLine;
-    column = startColumn;
+    currentLocation = startLocation;
   }
-  if (bestMatch) {
-    bestMatch->line = startLine;
-    bestMatch->column = startColumn;
-    line = bestFinalLine;
-    column = bestFinalColumn;
+  if (!bestMatch.empty()) {
+    currentLocation = startLocation;
+    currentLocation.end.line = bestFinalLine;
+    currentLocation.end.column = bestFinalColumn;
     bufferIndex = bestFinalBufferIndex;
-    return *bestMatch;
+    return bestMatch;
   }
   if (input.eof()) {
-    return Token{.type = TokenType::END};
+    return Parser::make_YYEOF(currentLocation);
   } else {
-    return Token{.type = TokenType::ERROR, .value = std::string(1, c)};
+    return Parser::make_YYUNDEF(currentLocation);
   }
 }
 } // namespace sl

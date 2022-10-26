@@ -66,11 +66,10 @@ public:
   std::string name;
   std::unique_ptr<AstNode> initializer;
   DefinitionNode(std::string name, std::unique_ptr<AstNode> initializer,
-                 const std::string &declarationKeyword,
+                 bool constant,
                  std::optional<std::unique_ptr<Type>> valueType = std::nullopt)
       : AstNode(AstNodeType::DEFINITION), name(std::move(name)),
-        initializer(std::move(initializer)),
-        constant(declarationKeyword == "let") {
+        initializer(std::move(initializer)), constant(constant) {
     if (valueType) {
       this->valueType = std::move(*valueType);
     }
@@ -133,13 +132,11 @@ public:
   void assignType(SymbolTable &symbolTable,
                   const SymbolTable &allGlobalSymbols) override;
 };
-class BoolLiteralNode : public AstNode {
+class BooleanLiteralNode : public AstNode {
 public:
   bool value;
-  BoolLiteralNode(bool value)
+  BooleanLiteralNode(bool value)
       : AstNode(AstNodeType::BOOL_LITERAL), value(value) {}
-  BoolLiteralNode(const std::string &value)
-      : AstNode(AstNodeType::BOOL_LITERAL), value(value == "true") {}
 
   std::string toString() const override;
 

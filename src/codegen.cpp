@@ -1,24 +1,20 @@
 #include "codegen.h"
-#include "llvm/Analysis/CGSCCPassManager.h"
-#include "llvm/Analysis/LoopAnalysisManager.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/IRPrintingPasses.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/PassManager.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/MC/TargetRegistry.h"
-#include "llvm/Passes/PassBuilder.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Host.h"
-#include "llvm/Support/TargetSelect.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h"
-#include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Scalar/GVN.h"
-#include "llvm/Transforms/Utils.h"
 #include <iostream>
+#include <llvm/Analysis/CGSCCPassManager.h>
+#include <llvm/Analysis/LoopAnalysisManager.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/IRPrintingPasses.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/Host.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/TargetMachine.h>
 
 namespace sl {
 using namespace llvm;
@@ -262,8 +258,8 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
                            floatLiteralNode.value);
   }
   case AstNodeType::BOOL_LITERAL: {
-    const BoolLiteralNode &boolLiteralNode =
-        static_cast<const BoolLiteralNode &>(expression);
+    const auto &boolLiteralNode =
+        static_cast<const BooleanLiteralNode &>(expression);
     return ConstantInt::get(getLlvmType(**expression.valueType, context),
                             boolLiteralNode.value);
   }

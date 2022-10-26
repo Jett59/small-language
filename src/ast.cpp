@@ -27,7 +27,7 @@ std::string FloatLiteralNode::toString() const {
 std::string StringLiteralNode::toString() const {
   return "String \""s + value + "\"";
 }
-std::string BoolLiteralNode::toString() const {
+std::string BooleanLiteralNode::toString() const {
   return "Bool "s + (value ? "true"s : "false"s);
 }
 std::string FunctionNode::toString() const {
@@ -171,7 +171,7 @@ void StringLiteralNode::assignType(SymbolTable &symbolTable,
                                    const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::STRING);
 }
-void BoolLiteralNode::assignType(SymbolTable &symbolTable,
+void BooleanLiteralNode::assignType(SymbolTable &symbolTable,
                                  const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::BOOL);
 }
