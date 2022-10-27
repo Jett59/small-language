@@ -7,7 +7,8 @@ namespace sl {
 enum class GeneratedFileType { OBJECT, ASSEMBLY };
 
 void codegen(const AstNode &ast, const std::string &targetTriple,
-             GeneratedFileType fileType, const std::string &outputFile);
+             GeneratedFileType fileType, const std::string &outputFile,
+             bool printIr);
 } // namespace sl
 
 #endif

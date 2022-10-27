@@ -512,7 +512,8 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
 }
 
 void codegen(const AstNode &ast, const std::string &initialTargetTriple,
-             GeneratedFileType outputFileType, const std::string &outputFile) {
+             GeneratedFileType outputFileType, const std::string &outputFile,
+             bool printIr) {
   InitializeAllTargetInfos();
   InitializeAllTargets();
   InitializeAllTargetMCs();
@@ -523,14 +524,14 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   if (ast.type != AstNodeType::COMPILATION_UNIT) {
     throw std::runtime_error("Expected compilation unit");
   }
-  Function *rawDefinitionsFunction = Function::Create(
+  Function *mainFunction = Function::Create(
       FunctionType::get(llvm::Type::getInt32Ty(llvmContext), false),
       GlobalValue::ExternalLinkage, "main", &module);
-  BasicBlock *rawDefinitionsEntryBlock =
-      BasicBlock::Create(llvmContext, "entry", rawDefinitionsFunction);
-  FunctionContext rawDefinitionsFunctionContext{
-      rawDefinitionsFunction, rawDefinitionsEntryBlock,
-      IRBuilder<>(rawDefinitionsEntryBlock)};
+  BasicBlock *mainEntryBlock =
+      BasicBlock::Create(llvmContext, "entry", mainFunction);
+  FunctionContext mainFunctionContext{
+      mainFunction, mainEntryBlock,
+      IRBuilder<>(mainEntryBlock)};
   const CompilationUnitNode &compilationUnit =
       static_cast<const CompilationUnitNode &>(ast);
   SymbolTable allGlobalSymbols;
@@ -549,15 +550,15 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   for (const auto &statement : compilationUnit.definitions) {
     if (statement->type != AstNodeType::DEFINITION) {
       codegenStatement(*statement, llvmContext, module,
-                       rawDefinitionsFunctionContext, symbolTable,
+                       mainFunctionContext, symbolTable,
                        allGlobalSymbols);
     } else {
       codegenGlobalDefinition(
           static_cast<const DefinitionNode &>(*statement), llvmContext, module,
-          rawDefinitionsFunctionContext, symbolTable, allGlobalSymbols);
+          mainFunctionContext, symbolTable, allGlobalSymbols);
     }
   }
-  rawDefinitionsFunctionContext.irBuilder.CreateRet(
+  mainFunctionContext.irBuilder.CreateRet(
       ConstantInt::get(llvmContext, APInt(32, 0)));
   if (verifyModule(module, &errs())) {
     throw std::runtime_error("Module verification failed");
@@ -598,6 +599,9 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   ModulePassManager modulePassManager =
       passBuilder.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
   modulePassManager.run(module, moduleAnalysisManager);
+  if (printIr) {
+    module.print(errs(), nullptr);
+  }
   std::error_code ec;
   raw_fd_ostream dest(outputFile, ec, sys::fs::OF_None);
   if (ec) {

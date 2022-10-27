@@ -17,6 +17,10 @@ static void help(char *program) {
   std::cout << "-t, --target <triple>\t\tSpecify the LLVm target triple for "
                "cross-compilation"
             << std::endl;
+  std::cout << "-c\t\t\tCompile the source file to an object file" << std::endl;
+  std::cout << "-S\t\t\tCompile the source file to an assembly file"
+            << std::endl;
+  std::cout << "--print-ir\t\tPrint the LLVM IR to stdout" << std::endl;
   std::cout << "  -h, --help\t\tShow this help message" << std::endl;
   std::cout << "  -v, --version\t\tShow version information" << std::endl;
 }
@@ -32,6 +36,7 @@ struct Options {
   std::string target;
   GeneratedFileType outputFileType = GeneratedFileType::OBJECT;
   std::string outputFile;
+  bool printIr;
 
   Options(int argc, char **argv) {
     help = false;
@@ -63,6 +68,8 @@ struct Options {
           std::cerr << "Missing output file" << std::endl;
           exit(1);
         }
+      } else if (arg == "--print-ir") {
+        printIr = true;
       } else if (arg[0] == '-') {
         std::cerr << "Unknown option: " << arg << std::endl;
         usage(argv[0]);
@@ -103,7 +110,7 @@ int main(int argc, char **argv) {
         std::map<std::string, const DefinitionNode &> symbolTable;
         ast->assignType(symbolTable, {});
       }
-      codegen(*ast, options.target, options.outputFileType, options.outputFile);
+      codegen(*ast, options.target, options.outputFileType, options.outputFile, options.printIr);
     } catch (const SlException &e) {
       std::cerr << e.what() << std::endl;
       exit(1);
