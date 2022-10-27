@@ -81,18 +81,18 @@ static std::unique_ptr<NodeClass> makeAstNode(sl::location &location, ArgumentTy
 
 %start compilation-unit
 
-%type <std::unique_ptr<AstNode>> statement expression
+%type <std::unique_ptr<AstNode>> statement expression if-statement
 %type <std::vector<std::unique_ptr<AstNode>>> expression-list statement-list
 %type <std::unique_ptr<Type>> type
 %type <std::vector<std::unique_ptr<Type>>> type-list
 %type <std::unique_ptr<NameAndType>> name-and-type
 %type <std::vector<std::unique_ptr<NameAndType>>> name-and-type-list
 
+%left "&&" "||"
+%left "==" "!=" "<" "<=" ">" ">="
 %left "+" "-"
 %left "*" "/" "%"
 %left "&" "|" "^" "~"
-%left "==" "!=" "<" "<=" ">" ">="
-%left "&&" "||"
 %right "="
 
 /* For function calls */
@@ -122,12 +122,8 @@ statement:
 | "mut" IDENTIFIER "=" expression ";" {
     $$ = makeAstNode<DefinitionNode>(@1, $2, $4, false);
 }
-| "if" expression "{" statement-list "}" {
-    $$ = makeAstNode<IfStatementNode>(@1, $2, $4);
-}
-| "if" expression "{" statement-list "}" "else" "{" statement-list "}" {
-    $$ = makeAstNode<IfStatementNode>(@1, $2, $4, $8);
-}
+
+| if-statement
 | "return" expression ";" {
     $$ = makeAstNode<ReturnNode>(@1, $2);
 }
@@ -136,6 +132,17 @@ statement:
 }
 | expression ";" {
     $$ = $1;
+}
+
+if-statement:
+  "if" expression "{" statement-list "}" {
+    $$ = makeAstNode<IfStatementNode>(@1, $2, $4);
+}
+| "if" expression "{" statement-list "}" "else" "{" statement-list "}" {
+    $$ = makeAstNode<IfStatementNode>(@1, $2, $4, $8);
+}
+| "if" expression "{" statement-list "}" "else" if-statement {
+    $$ = makeAstNode<IfStatementNode>(@1, $2, $4, $7);
 }
 
 expression-list: expression {

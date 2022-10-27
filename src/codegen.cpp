@@ -464,7 +464,7 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     for (const auto &statement : ifStatement.thenBody) {
       codegenStatement(*statement, context, module, function, newSymbolTable,
                        allGlobalSymbols);
-      if (statement->type == AstNodeType::RETURN) {
+      if (statement->returns) {
         truePathReturns = true;
         break;
       }
@@ -479,7 +479,7 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     for (const auto &statement : ifStatement.elseBody) {
       codegenStatement(*statement, context, module, function, newSymbolTable,
                        allGlobalSymbols);
-      if (statement->type == AstNodeType::RETURN) {
+      if (statement->returns) {
         falsePathReturns = true;
         break;
       }
@@ -490,6 +490,8 @@ static void codegenStatement(const AstNode &statement, LLVMContext &context,
     falseBranch = function.irBuilder.GetInsertBlock();
     if (!truePathReturns || !falsePathReturns) {
       function.irBuilder.SetInsertPoint(mergeBranch);
+    } else {
+      mergeBranch->eraseFromParent();
     }
     break;
   }

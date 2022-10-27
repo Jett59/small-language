@@ -1,9 +1,11 @@
 let fib = fn (a: i32) -> i32 {
-    if a <= 1 {
-        return a;
+    if a == 0 {
+        return 0;
+        }else if a == 1 {
+            return 1;
+        }else {
+        return fib(a - 1) + fib(a - 2);
     }
-    return fib(a - 1) + fib(a - 2);
 };
-let exit = extern exit: (i32) -> nil;
-let result = fib(17);
-exit(result);
+let exit = extern exit: (i32)-> nil;
+exit(fib(17));

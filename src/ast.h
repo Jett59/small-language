@@ -38,6 +38,8 @@ public:
   AstNodeType type;
   std::optional<std::unique_ptr<Type>> valueType;
   int line = 0, column = 0;
+  bool returns = false;
+
   AstNode(AstNodeType type) : type(type) {}
   virtual ~AstNode() = default;
 
@@ -242,6 +244,13 @@ public:
                   std::vector<std::unique_ptr<AstNode>> elseBody = {})
       : AstNode(AstNodeType::IF_STATEMENT), condition(std::move(condition)),
         thenBody(std::move(thenBody)), elseBody(std::move(elseBody)) {}
+  IfStatementNode(std::unique_ptr<AstNode> condition,
+                  std::vector<std::unique_ptr<AstNode>> thenBody,
+                  std::unique_ptr<AstNode> elseStatement)
+      : AstNode(AstNodeType::IF_STATEMENT), condition(std::move(condition)),
+        thenBody(std::move(thenBody)) {
+    elseBody.push_back(std::move(elseStatement));
+  }
 
   std::string toString() const override;
 

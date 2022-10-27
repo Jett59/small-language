@@ -172,7 +172,7 @@ void StringLiteralNode::assignType(SymbolTable &symbolTable,
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::STRING);
 }
 void BooleanLiteralNode::assignType(SymbolTable &symbolTable,
-                                 const SymbolTable &) {
+                                    const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::BOOL);
 }
 void FunctionNode::assignType(SymbolTable &symbolTable,
@@ -191,7 +191,15 @@ void FunctionNode::assignType(SymbolTable &symbolTable,
       newSymbolTable.emplace(parameter->name, *fakeDefinitions.back());
     }
     for (auto &statement : body) {
+      if (returns) {
+        // Statements after the return!
+        throw SlException(statement->line, statement->column,
+                          "Code will never run");
+      }
       statement->assignType(newSymbolTable, allGlobalSymbols);
+      if (statement->returns) {
+        returns = true;
+      }
     }
     findInFunction<ReturnNode, AstNodeType::RETURN>(
         body,
@@ -206,6 +214,9 @@ void FunctionNode::assignType(SymbolTable &symbolTable,
           }
         },
         false);
+    if (!returns) {
+      throw SlException(line, column, "Function does not necessarily return");
+    }
   }
   std::vector<std::unique_ptr<Type>> parameterTypes;
   for (auto &parameter : parameters) {
@@ -291,12 +302,31 @@ void IfStatementNode::assignType(SymbolTable &symbolTable,
           PrimitiveType::BOOL) {
     throw SlException(line, column, "If condition is not a boolean");
   }
+  bool trueBranchReturns = false;
   for (auto &statement : thenBody) {
+    if (trueBranchReturns) {
+      // Statements after the return!
+      throw SlException(statement->line, statement->column,
+                        "Code will never run");
+    }
     statement->assignType(newSymbolTable, allGlobalSymbols);
+    if (statement->returns) {
+      trueBranchReturns = true;
+    }
   }
+  bool falseBranchReturns = false;
   for (auto &statement : elseBody) {
+    if (falseBranchReturns) {
+      // Statements after the return!
+      throw SlException(statement->line, statement->column,
+                        "Code will never run");
+    }
     statement->assignType(symbolTable, allGlobalSymbols);
+    if (statement->returns) {
+      falseBranchReturns = true;
+    }
   }
+  returns = trueBranchReturns && falseBranchReturns;
 }
 void VariableReferenceNode::assignType(SymbolTable &symbolTable,
                                        const SymbolTable &) {
@@ -355,6 +385,7 @@ void CallNode::assignType(SymbolTable &symbolTable,
 }
 void ReturnNode::assignType(SymbolTable &symbolTable,
                             const SymbolTable &allGlobalSymbols) {
+  returns = true;
   value->assignType(symbolTable, allGlobalSymbols);
   if (!value->valueType) {
     throw SlException(line, column, "Return value has no type");
