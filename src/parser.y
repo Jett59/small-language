@@ -93,6 +93,7 @@ static std::unique_ptr<NodeClass> makeAstNode(sl::location &location, ArgumentTy
 %left "+" "-"
 %left "*" "/" "%"
 %left "&" "|" "^" "~"
+%left "as"
 %right "="
 
 /* For function calls */
@@ -178,6 +179,9 @@ expression:
 | "false" {
     $$ = makeAstNode<BooleanLiteralNode>(@1, false);
 }
+| expression "as" type {
+    $$ = makeAstNode<CastNode>(@2, $1, $3);
+}
 | "fn" "(" name-and-type-list ")" "->" type "{" statement-list "}" {
     $$ = makeAstNode<FunctionNode>(@1, $6, $3, $8);
 }
@@ -188,37 +192,37 @@ expression:
     $$ = makeAstNode<CallNode>(@1, $1, $3);
 }
 | expression "+" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::ADD, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::ADD, $1, $3);
 }
 | expression "-" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::SUBTRACT, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::SUBTRACT, $1, $3);
 }
 | expression "*" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::MULTIPLY, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::MULTIPLY, $1, $3);
 }
 | expression "/" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::DIVIDE, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::DIVIDE, $1, $3);
 }
 | expression "%" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::MODULO, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::MODULO, $1, $3);
 }
 | expression "==" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::EQUAL, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::EQUAL, $1, $3);
 }
 | expression "!=" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::NOT_EQUAL, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::NOT_EQUAL, $1, $3);
 }
 | expression "<" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::LESS_THAN, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::LESS_THAN, $1, $3);
 }
 | expression "<=" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::LESS_THAN_OR_EQUAL, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::LESS_THAN_OR_EQUAL, $1, $3);
 }
 | expression ">" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::GREATER_THAN, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::GREATER_THAN, $1, $3);
 }
 | expression ">=" expression {
-    $$ = makeAstNode<BinaryOperatorNode>(@1, BinaryOperatorType::GREATER_THAN_OR_EQUAL, $1, $3);
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::GREATER_THAN_OR_EQUAL, $1, $3);
 }
 
 name-and-type-list: name-and-type {
