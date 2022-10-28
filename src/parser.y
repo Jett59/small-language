@@ -67,7 +67,7 @@ static std::unique_ptr<NodeClass> makeAstNode(sl::location &location, ArgumentTy
 %token FOR "for" WHILE "while" IF "if" ELSE "else"
 %token EXTERN "extern" AS "as"
 
-%token I8 "i8" I16 "i16" I32 "i32" I64 "i64" U8 "u8" U16 "u16" U32 "u32" U64 "u64" F32 "f32" F64 "f64" BOOL "bool" CHAR "char" STRING "string" NIL "nil"
+%token I8 "i8" I16 "i16" I32 "i32" I64 "i64" U8 "u8" U16 "u16" U32 "u32" U64 "u64" F32 "f32" F64 "f64" BOOL "bool" CHAR "char" NIL "nil"
 %token TRUE "true" FALSE "false"
 %token ARROW "->"
 %token LEFT_PAREN "(" RIGHT_PAREN ")" LEFT_BRACE "{" RIGHT_BRACE "}" LEFT_BRACKET "[" RIGHT_BRACKET "]"
@@ -88,13 +88,13 @@ static std::unique_ptr<NodeClass> makeAstNode(sl::location &location, ArgumentTy
 %type <std::unique_ptr<NameAndType>> name-and-type
 %type <std::vector<std::unique_ptr<NameAndType>>> name-and-type-list
 
+%right "="
 %left "&&" "||"
 %left "==" "!=" "<" "<=" ">" ">="
 %left "+" "-"
 %left "*" "/" "%"
 %left "&" "|" "^" "~"
 %left "as"
-%right "="
 
 /* For function calls */
 %left "("
@@ -224,6 +224,9 @@ expression:
 | expression ">=" expression {
     $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::GREATER_THAN_OR_EQUAL, $1, $3);
 }
+| expression "=" expression {
+    $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::ASSIGN, $1, $3);
+}
 
 name-and-type-list: name-and-type {
     std::vector<std::unique_ptr<NameAndType>> list;
@@ -287,9 +290,6 @@ type:
     }
     | "char" {
         $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::CHAR);
-    }
-    | "string" {
-        $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::STRING);
     }
     | "nil" {
         $$ = make_unique<PrimitiveTypeNode>( PrimitiveType::NIL);

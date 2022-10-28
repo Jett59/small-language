@@ -167,7 +167,6 @@ TokenGetter tokenGetters[] = {
     keywordTokenGetter<"f64", Parser::make_F64>,
     keywordTokenGetter<"bool", Parser::make_BOOL>,
     keywordTokenGetter<"char", Parser::make_CHAR>,
-    keywordTokenGetter<"string", Parser::make_STRING>,
     getIdentifier,
     getNumber,
     getString,
@@ -224,7 +223,8 @@ SymbolType Lexer::nextToken() {
     if (token) {
       size_t line = currentLocation.end.line;
       size_t column = currentLocation.end.column;
-      if (bestMatch.empty() || line > bestFinalLine || column > bestFinalColumn) {
+      if (bestMatch.empty() || line > bestFinalLine ||
+          column > bestFinalColumn) {
         bestMatch.move(*token);
         bestFinalColumn = column;
         bestFinalLine = line;

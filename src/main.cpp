@@ -36,7 +36,7 @@ struct Options {
   std::string target;
   GeneratedFileType outputFileType = GeneratedFileType::OBJECT;
   std::string outputFile;
-  bool printIr;
+  bool printIr = false;
 
   Options(int argc, char **argv) {
     help = false;

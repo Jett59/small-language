@@ -19,6 +19,7 @@ std::string FunctionTypeNode::toString() const {
   result += ")->" + returnType->toString();
   return result;
 }
+std::string ArrayType::toString() const { return type->toString() + "[]"; }
 
 std::unique_ptr<Type> PrimitiveTypeNode::clone() const {
   return std::make_unique<PrimitiveTypeNode>(primitiveType);
@@ -33,6 +34,9 @@ std::unique_ptr<Type> FunctionTypeNode::clone() const {
   }
   return std::make_unique<FunctionTypeNode>(std::move(clonedArguments),
                                             returnType->clone());
+}
+std::unique_ptr<Type> ArrayType::clone() const {
+  return std::make_unique<ArrayType>(type->clone());
 }
 
 bool PrimitiveTypeNode::equals(const Type &other) const {
@@ -65,5 +69,11 @@ bool FunctionTypeNode::equals(const Type &other) const {
     }
   }
   return returnType->equals(*otherFunctionType.returnType);
+}
+bool ArrayType::equals(const Type &other) const {
+  if (other.type != TypeType::ARRAY) {
+    return false;
+  }
+  return type->equals(*static_cast<const ArrayType &>(other).type);
 }
 } // namespace sl

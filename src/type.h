@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace sl {
-enum class TypeType { PRIMITIVE, REFERENCE, FUNCTION };
+enum class TypeType { PRIMITIVE, REFERENCE, FUNCTION, ARRAY };
 class Type {
 public:
   TypeType type;
@@ -45,7 +45,6 @@ enum class PrimitiveType {
   F64,
   BOOL,
   CHAR,
-  STRING,
 };
 
 static inline bool isSigned(PrimitiveType type) {
@@ -95,7 +94,7 @@ static std::map<PrimitiveType, std::string> primitiveTypeToString = {
     {PrimitiveType::U32, "u32"},   {PrimitiveType::U64, "u64"},
     {PrimitiveType::UPTR, "uptr"}, {PrimitiveType::F32, "f32"},
     {PrimitiveType::F64, "f64"},   {PrimitiveType::BOOL, "bool"},
-    {PrimitiveType::CHAR, "char"}, {PrimitiveType::STRING, "string"},
+    {PrimitiveType::CHAR, "char"}, {PrimitiveType::NIL, "nil"},
 };
 class PrimitiveTypeNode : public Type {
 public:
@@ -174,6 +173,19 @@ public:
                    std::unique_ptr<Type> returnType)
       : Type(TypeType::FUNCTION), arguments(std::move(arguments)),
         returnType(std::move(returnType)) {}
+
+  std::string toString() const override;
+
+  std::unique_ptr<Type> clone() const override;
+
+  bool equals(const Type &other) const override;
+};
+class ArrayType : public Type {
+public:
+  std::unique_ptr<Type> type;
+
+  ArrayType(std::unique_ptr<Type> type)
+      : Type(TypeType::ARRAY), type(std::move(type)) {}
 
   std::string toString() const override;
 

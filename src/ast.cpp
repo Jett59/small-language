@@ -82,17 +82,22 @@ std::string ReturnNode::toString() const {
 std::string ExternalNode::toString() const {
   return "ExternalFunction: "s + name + ": "s + (*valueType)->toString();
 }
+std::string DereferenceNode::toString() const {
+  return "Dereference: "s + value->toString();
+}
 
-std::unique_ptr<Type> decayReferenceType(std::unique_ptr<Type> type) {
-  if (type->type == TypeType::REFERENCE) {
-    const auto &referenceType = static_cast<const ReferenceTypeNode &>(*type);
-    if (referenceType.type->type != TypeType::FUNCTION) {
-      return referenceType.type->clone();
-    } else {
-      return type;
+void decayReferenceType(std::unique_ptr<AstNode> &node) {
+  const Type &type = **node->valueType;
+  if (type.type == TypeType::REFERENCE) {
+    const auto &referenceType = static_cast<const ReferenceTypeNode &>(type);
+    // Only decay to a first-class type.
+    if (referenceType.type->type == TypeType::PRIMITIVE ||
+        referenceType.type->type == TypeType::REFERENCE) {
+      auto dereferenceNodeType = referenceType.type->clone();
+      auto dereferenceNode = std::make_unique<DereferenceNode>(std::move(node));
+      dereferenceNode->valueType = std::move(dereferenceNodeType);
+      node = std::move(dereferenceNode);
     }
-  } else {
-    return type;
   }
 }
 
@@ -155,7 +160,8 @@ void DefinitionNode::assignType(SymbolTable &symbolTable,
     throw SlException(initializer->line, initializer->column,
                       "Initializer has no type");
   }
-  valueType = decayReferenceType(initializer->valueType->get()->clone());
+  decayReferenceType(initializer);
+  valueType = initializer->valueType->get()->clone();
   symbolTable.emplace(name, *this);
 }
 void IntegerLiteralNode::assignType(SymbolTable &symbolTable,
@@ -169,7 +175,8 @@ void FloatLiteralNode::assignType(SymbolTable &symbolTable,
 }
 void StringLiteralNode::assignType(SymbolTable &symbolTable,
                                    const SymbolTable &) {
-  valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::STRING);
+  valueType = std::make_unique<ArrayType>(
+      std::make_unique<PrimitiveTypeNode>(PrimitiveType::U8));
 }
 void BooleanLiteralNode::assignType(SymbolTable &symbolTable,
                                     const SymbolTable &) {
@@ -206,9 +213,8 @@ void FunctionNode::assignType(SymbolTable &symbolTable,
         [this](ReturnNode &returnNode) {
           staticlyConvert(returnNode.value, **returnNode.value->valueType,
                           *returnType);
-          returnNode.valueType =
-              decayReferenceType(returnNode.value->valueType->get()->clone());
-          if (!(*returnNode.valueType)->equals(*returnType)) {
+          decayReferenceType(returnNode.value);
+          if (!(*returnNode.value->valueType)->equals(*returnType)) {
             throw SlException(returnNode.line, returnNode.column,
                               "Return type mismatch");
           }
@@ -246,7 +252,8 @@ void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
   }
   if (operatorType == BinaryOperatorType::ASSIGN) {
     const auto &leftType = *left->valueType;
-    auto rightType = decayReferenceType((*right->valueType)->clone());
+    decayReferenceType(right);
+    const auto &rightType = *right->valueType;
     if (leftType->type != TypeType::REFERENCE) {
       throw SlException(line, column,
                         "Left side of assignment is not a reference");
@@ -257,7 +264,6 @@ void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
       throw SlException(line, column, "Left side of assignment is a constant");
     }
     staticlyConvert(right, *rightType, *leftReferenceType.type);
-    rightType = decayReferenceType(right->valueType->get()->clone());
     if (leftReferenceType.type->equals(*rightType)) {
       valueType = leftReferenceType.clone();
     } else {
@@ -267,10 +273,12 @@ void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
               leftType->toString() + " and " + rightType->toString());
     }
   } else {
-    auto leftType = decayReferenceType(left->valueType->get()->clone());
-    auto rightType = decayReferenceType(right->valueType->get()->clone());
+    decayReferenceType(left);
+    decayReferenceType(right);
+    auto &leftType = *left->valueType;
+    auto &rightType = *right->valueType;
     staticlyConvert(right, *rightType, *leftType);
-    rightType = decayReferenceType(right->valueType->get()->clone());
+    staticlyConvert(left, *leftType, *rightType);
     if (!leftType->equals(*rightType)) {
       throw SlException(
           line, column,
@@ -279,10 +287,10 @@ void BinaryOperatorNode::assignType(SymbolTable &symbolTable,
     }
     if (isComparisonOperator(operatorType)) {
       valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::BOOL);
-      operandType = std::move(leftType);
+      operandType = leftType->clone();
     } else {
       valueType = leftType->clone();
-      operandType = std::move(leftType);
+      operandType = leftType->clone();
     }
   }
 }
@@ -296,7 +304,8 @@ void IfStatementNode::assignType(SymbolTable &symbolTable,
   if (!condition->valueType) {
     throw SlException(line, column, "If condition has no type");
   }
-  auto conditionType = decayReferenceType(condition->valueType->get()->clone());
+  decayReferenceType(condition);
+  const auto &conditionType = *condition->valueType;
   if (conditionType->type != TypeType::PRIMITIVE ||
       static_cast<const PrimitiveTypeNode &>(*conditionType).primitiveType !=
           PrimitiveType::BOOL) {
@@ -347,8 +356,11 @@ void CastNode::assignType(SymbolTable &symbolTable,
 void CallNode::assignType(SymbolTable &symbolTable,
                           const SymbolTable &allGlobalSymbols) {
   function->assignType(symbolTable, allGlobalSymbols);
-  auto functionExpressionType =
-      decayReferenceType((*function->valueType)->clone());
+  if (!function->valueType) {
+    throw SlException(line, column, "Function call has no type");
+  }
+  decayReferenceType(function);
+  const auto &functionExpressionType = *function->valueType;
   if (functionExpressionType->type != TypeType::REFERENCE) {
     throw SlException(line, column,
                       "Function call is not a reference to a function");
@@ -368,11 +380,10 @@ void CallNode::assignType(SymbolTable &symbolTable,
       throw SlException(line, column,
                         "Argument " + std::to_string(i) + " has no type");
     }
-    auto argumentType =
-        decayReferenceType(arguments[i]->valueType->get()->clone());
+    decayReferenceType(arguments[i]);
+    const auto &argumentType = *arguments[i]->valueType;
     staticlyConvert(arguments[i], *argumentType,
                     *functionTypeNode.arguments[i]);
-    argumentType = decayReferenceType(arguments[i]->valueType->get()->clone());
     if (!argumentType->equals(*functionTypeNode.arguments[i])) {
       throw SlException(line, column,
                         "Argument " + std::to_string(i + 1) +
@@ -397,5 +408,19 @@ void ExternalNode::assignType(SymbolTable &symbolTable,
                               const SymbolTable &allGlobalSymbols) {
   // We already assigned our type in the constructor so we don't need to do
   // anything here.
+}
+void DereferenceNode::assignType(SymbolTable &symbolTable,
+                                 const SymbolTable &allGlobalSymbols) {
+  value->assignType(symbolTable, allGlobalSymbols);
+  if (!value->valueType) {
+    throw SlException(line, column, "Dereference expression has no type");
+  }
+  if (value->valueType->get()->type != TypeType::REFERENCE) {
+    throw SlException(line, column,
+                      "Dereference expression is not a reference");
+  }
+  const auto &referenceType =
+      static_cast<const ReferenceTypeNode &>(**value->valueType);
+  this->valueType = referenceType.type->clone();
 }
 } // namespace sl

@@ -28,6 +28,7 @@ enum class AstNodeType {
   CALL,
   RETURN,
   EXTERNAL,
+  DEREFERENCE,
 };
 
 // Forward-declare to allow for use in the symbol table.
@@ -322,6 +323,17 @@ public:
     valueType =
         std::make_unique<ReferenceTypeNode>(std::move(nameAndType->type), true);
   }
+
+  std::string toString() const override;
+
+  void assignType(SymbolTable &symbolTable,
+                  const SymbolTable &allGlobalSymbols) override;
+};
+class DereferenceNode : public AstNode {
+public:
+  std::unique_ptr<AstNode> value;
+  DereferenceNode(std::unique_ptr<AstNode> value)
+      : AstNode(AstNodeType::DEREFERENCE), value(std::move(value)) {}
 
   std::string toString() const override;
 
