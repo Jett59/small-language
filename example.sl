@@ -8,5 +8,5 @@ let func = fn (n: i32) -> i32 {
     }
 };
 let exit = extern exit: (i32)-> nil;
-let getInt = extern getInt: (bool) -> i32;
-exit(func(getInt(true)));
+let getInt = extern getInt: () -> i32;
+exit(func(getInt()));

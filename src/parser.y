@@ -105,14 +105,13 @@ compilation-unit: statement-list {
     *ast = makeAstNode<CompilationUnitNode>(@1, $1);
 }
 
-statement-list: statement {
-    std::vector<std::unique_ptr<AstNode>> list;
-    list.push_back(std::move($1));
-    $$ = std::move(list);
-}
-| statement-list statement {
+statement-list: statement-list statement {
     auto list = $1;
     list.push_back($2);
+    $$ = std::move(list);
+}
+| /* empty */ {
+    std::vector<std::unique_ptr<AstNode>> list;
     $$ = std::move(list);
 }
 
@@ -154,6 +153,10 @@ expression-list: expression {
 | expression-list "," expression {
     auto list = $1;
     list.push_back($3);
+    $$ = std::move(list);
+}
+| /* empty */ {
+    std::vector<std::unique_ptr<AstNode>> list;
     $$ = std::move(list);
 }
 
@@ -238,6 +241,10 @@ name-and-type-list: name-and-type {
     list.push_back($3);
     $$ = std::move(list);
 }
+| /* empty */ {
+    std::vector<std::unique_ptr<NameAndType>> list;
+    $$ = std::move(list);
+}
 
 name-and-type: IDENTIFIER ":" type {
     $$ = make_unique<NameAndType>($1, $3);
@@ -251,6 +258,10 @@ type-list: type {
 | type-list "," type {
     auto list = $1;
     list.push_back($3);
+    $$ = std::move(list);
+}
+| /* empty */ {
+    std::vector<std::unique_ptr<Type>> list;
     $$ = std::move(list);
 }
 

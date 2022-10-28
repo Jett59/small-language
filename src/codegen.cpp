@@ -299,6 +299,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
               "Unsupported type for inequality comparison");
         }
       }
+      // We use a macro here because it is just too 
       case BinaryOperatorType::LESS_THAN: {
         if (isIntegral(primitiveType)) {
           if (isSigned(primitiveType)) {
