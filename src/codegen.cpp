@@ -137,7 +137,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
                  "Array index out of bounds", module, context);
     Value *pointer = currentFunction.irBuilder.CreateExtractValue(array, 0);
     return currentFunction.irBuilder.CreateInBoundsGEP(
-        pointer->getType()->getPointerElementType(), pointer,
+        getLlvmType(removeReference(**subscript.valueType), context), pointer,
         std::vector<Value *>{index});
   }
   case AstNodeType::DEREFERENCE: {
@@ -596,7 +596,6 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   InitializeAllAsmPrinters();
   InitializeAllAsmParsers();
   LLVMContext llvmContext;
-  llvmContext.setOpaquePointers(false);
   Module module("sl", llvmContext);
   std::string targetTriple;
   if (initialTargetTriple == "") {
@@ -679,7 +678,6 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
                                    cGSCCAnalysisManager, moduleAnalysisManager);
   ModulePassManager modulePassManager =
       passBuilder.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
-  module.print(errs(), nullptr);
   modulePassManager.run(module, moduleAnalysisManager);
   if (printIr) {
     module.print(errs(), nullptr);

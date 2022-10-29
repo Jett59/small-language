@@ -120,6 +120,9 @@ void decayReferenceType(std::unique_ptr<AstNode> &node) {
 
 static void staticlyConvert(std::unique_ptr<AstNode> &value,
                             const Type &originalType, const Type &desiredType) {
+                              if (originalType.equals(desiredType)) {
+                                return;
+                              }
   if (isIntegral(desiredType) && value->type == AstNodeType::INTEGER_LITERAL) {
     value->valueType = desiredType.clone();
   } else if (isFloat(desiredType) &&
@@ -220,7 +223,7 @@ void ArrayLiteralNode::assignType(SymbolTable &symbolTable,
     const Type &firstType = **values[0]->valueType;
     for (auto &value : values) {
       staticlyConvert(value, **value->valueType, firstType);
-      if (!value->valueType->get()->equals(firstType)) {
+      if (!firstType.equals(**value->valueType)) {
         throw SlException(value->line, value->column,
                           "Array literal values must all be of the same type");
       }
