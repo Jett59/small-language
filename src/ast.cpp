@@ -30,6 +30,14 @@ std::string StringLiteralNode::toString() const {
 std::string BooleanLiteralNode::toString() const {
   return "Bool "s + (value ? "true"s : "false"s);
 }
+std::string ArrayLiteralNode::toString() const {
+  std::string result = "Array [";
+  for (const auto &value : values) {
+    result += value->toString() + ", ";
+  }
+  result += "]";
+  return result;
+}
 std::string FunctionNode::toString() const {
   std::string result = "Function:"s;
   for (const auto &param : parameters) {
@@ -85,13 +93,22 @@ std::string ExternalNode::toString() const {
 std::string DereferenceNode::toString() const {
   return "Dereference: "s + value->toString();
 }
+std::string SubscriptNode::toString() const {
+  return "Subscript: "s + value->toString() + "["s + index->toString() + "]"s;
+}
 
 void decayReferenceType(std::unique_ptr<AstNode> &node) {
   const Type &type = **node->valueType;
   if (type.type == TypeType::REFERENCE) {
     const auto &referenceType = static_cast<const ReferenceTypeNode &>(type);
     // Only decay to a first-class type.
+    // In LLVM, these are integers, floating points (these encompass
+    // all of our primitive types except for nil, which is illegal as a
+    // reference anyway), structures, arrays and references.
+    // These all seem reasonable.
     if (referenceType.type->type == TypeType::PRIMITIVE ||
+        referenceType.type->type == TypeType::STRUCT ||
+        referenceType.type->type == TypeType::ARRAY ||
         referenceType.type->type == TypeType::REFERENCE) {
       auto dereferenceNodeType = referenceType.type->clone();
       auto dereferenceNode = std::make_unique<DereferenceNode>(std::move(node));
@@ -107,6 +124,14 @@ static void staticlyConvert(std::unique_ptr<AstNode> &value,
     value->valueType = desiredType.clone();
   } else if (isFloat(desiredType) &&
              value->type == AstNodeType::FLOAT_LITERAL) {
+    value->valueType = desiredType.clone();
+  } else if (desiredType.type == TypeType::ARRAY &&
+             value->type == AstNodeType::ARRAY_LITERAL) {
+    auto &arrayLiteral = static_cast<ArrayLiteralNode &>(*value);
+    auto &arrayType = static_cast<const ArrayType &>(desiredType);
+    for (auto &element : arrayLiteral.values) {
+      staticlyConvert(element, **element->valueType, *arrayType.type);
+    }
     value->valueType = desiredType.clone();
   }
 }
@@ -181,6 +206,30 @@ void StringLiteralNode::assignType(SymbolTable &symbolTable,
 void BooleanLiteralNode::assignType(SymbolTable &symbolTable,
                                     const SymbolTable &) {
   valueType = std::make_unique<PrimitiveTypeNode>(PrimitiveType::BOOL);
+}
+void ArrayLiteralNode::assignType(SymbolTable &symbolTable,
+                                  const SymbolTable &allGlobalSymbols) {
+  for (auto &value : values) {
+    value->assignType(symbolTable, allGlobalSymbols);
+    if (!value->valueType) {
+      throw SlException(value->line, value->column, "Value has no type");
+    }
+    decayReferenceType(value);
+  }
+  if (values.size() > 0) {
+    const Type &firstType = **values[0]->valueType;
+    for (auto &value : values) {
+      staticlyConvert(value, **value->valueType, firstType);
+      if (!value->valueType->get()->equals(firstType)) {
+        throw SlException(value->line, value->column,
+                          "Array literal values must all be of the same type");
+      }
+    }
+    valueType = std::make_unique<ArrayType>(firstType.clone());
+  } else {
+    valueType = std::make_unique<ArrayType>(
+        std::make_unique<PrimitiveTypeNode>(PrimitiveType::NIL));
+  }
 }
 void FunctionNode::assignType(SymbolTable &symbolTable,
                               const SymbolTable &allGlobalSymbols) {
@@ -352,6 +401,8 @@ void CastNode::assignType(SymbolTable &symbolTable,
   if (!value->valueType) {
     throw SlException(line, column, "Cast expression has no type");
   }
+
+  staticlyConvert(value, **value->valueType, **valueType);
 }
 void CallNode::assignType(SymbolTable &symbolTable,
                           const SymbolTable &allGlobalSymbols) {
@@ -422,5 +473,35 @@ void DereferenceNode::assignType(SymbolTable &symbolTable,
   const auto &referenceType =
       static_cast<const ReferenceTypeNode &>(**value->valueType);
   this->valueType = referenceType.type->clone();
+}
+void SubscriptNode::assignType(SymbolTable &symbolTable,
+                               const SymbolTable &allGlobalSymbols) {
+  value->assignType(symbolTable, allGlobalSymbols);
+  if (!value->valueType) {
+    throw SlException(line, column, "Subscript expression has no type");
+  }
+  if (value->valueType->get()->type != TypeType::REFERENCE) {
+    throw SlException(line, column, "Subscript expression is not a reference");
+  }
+  const auto &referenceType =
+      static_cast<const ReferenceTypeNode &>(**value->valueType);
+  if (referenceType.type->type != TypeType::ARRAY) {
+    throw SlException(line, column, "Subscript expression is not an array");
+  }
+  const auto &arrayType = static_cast<const ArrayType &>(*referenceType.type);
+  index->assignType(symbolTable, allGlobalSymbols);
+  if (!index->valueType) {
+    throw SlException(line, column, "Subscript index has no type");
+  }
+  decayReferenceType(index);
+  const auto &indexType = *index->valueType;
+  staticlyConvert(index, *indexType, PrimitiveTypeNode{PrimitiveType::U64});
+  if (indexType->type != TypeType::PRIMITIVE ||
+      static_cast<const PrimitiveTypeNode &>(*indexType).primitiveType !=
+          PrimitiveType::U64) {
+    throw SlException(line, column, "Subscript index is not a u64");
+  }
+  valueType = std::make_unique<ReferenceTypeNode>(arrayType.type->clone(),
+                                                  referenceType.constant);
 }
 } // namespace sl

@@ -175,6 +175,8 @@ TokenGetter tokenGetters[] = {
     singleCharacterTokenGetter<')', Parser::make_RIGHT_PAREN>,
     singleCharacterTokenGetter<'{', Parser::make_LEFT_BRACE>,
     singleCharacterTokenGetter<'}', Parser::make_RIGHT_BRACE>,
+    singleCharacterTokenGetter<'[', Parser::make_LEFT_BRACKET>,
+    singleCharacterTokenGetter<']', Parser::make_RIGHT_BRACKET>,
     singleCharacterTokenGetter<',', Parser::make_COMMA>,
     singleCharacterTokenGetter<'.', Parser::make_DOT>,
     singleCharacterTokenGetter<'-', Parser::make_MINUS>,

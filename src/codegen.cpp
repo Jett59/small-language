@@ -23,6 +23,7 @@ struct FunctionContext {
   Function *function;
   BasicBlock *block;
   IRBuilder<> irBuilder;
+  bool isMainFunction = false;
 };
 
 static llvm::Type *getLlvmType(const sl::Type &type, LLVMContext &context) {
@@ -72,6 +73,13 @@ static llvm::Type *getLlvmType(const sl::Type &type, LLVMContext &context) {
         static_cast<const ReferenceTypeNode &>(type);
     return getLlvmType(*referenceType.type, context)->getPointerTo();
   }
+  case TypeType::ARRAY: {
+    const ArrayType &arrayType = static_cast<const ArrayType &>(type);
+    // Arrays are  structs with a pointer and a size.
+    return llvm::StructType::get(
+        context, {getLlvmType(*arrayType.type, context)->getPointerTo(),
+                  llvm::Type::getInt64Ty(context)});
+  }
   default:
     throw std::runtime_error("Unknown type");
   }
@@ -96,6 +104,23 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
                                 SymbolTable &symbolTable,
                                 const SymbolTable &allGlobalSymbols) {
   switch (expression.type) {
+  case AstNodeType::SUBSCRIPT: {
+    const SubscriptNode &subscript =
+        static_cast<const SubscriptNode &>(expression);
+    Value *array =
+        codegenExpression(*subscript.value, context, module, currentFunction,
+                          symbolTable, allGlobalSymbols);
+    Value *index =
+        codegenExpression(*subscript.index, context, module, currentFunction,
+                          symbolTable, allGlobalSymbols);
+    // array is a pointer to an LLVM array type. This means that the GEP
+    // instruction should have an index of 0 for the first index, and the index
+    // of the subscript for the second index.
+    std::vector<Value *> indices = {
+        ConstantInt::get(llvm::Type::getInt32Ty(context), 0), index};
+    return currentFunction.irBuilder.CreateGEP(
+        array->getType()->getPointerElementType(), array, indices);
+  }
   case AstNodeType::DEREFERENCE: {
     const DereferenceNode &dereference =
         static_cast<const DereferenceNode &>(expression);
@@ -174,7 +199,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     }
     const FunctionTypeNode &functionType =
         static_cast<const FunctionTypeNode &>(
-                 removeReference(**callNode.function->valueType));
+            removeReference(**callNode.function->valueType));
     Value *result = currentFunction.irBuilder.CreateCall(
         static_cast<FunctionType *>(getLlvmType(functionType, context)),
         function, argumentValues);
@@ -240,6 +265,73 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     return ConstantInt::get(getLlvmType(**expression.valueType, context),
                             boolLiteralNode.value);
   }
+  case AstNodeType::ARRAY_LITERAL: {
+    const auto &arrayLiteralNode =
+        static_cast<const ArrayLiteralNode &>(expression);
+    const auto &arrayType = static_cast<const ArrayType &>(
+        removeReference(**arrayLiteralNode.valueType));
+    const auto &elementType = removeReference(*arrayType.type);
+    auto llvmElementType = getLlvmType(elementType, context);
+    auto llvmArrayType = getLlvmType(arrayType, context);
+    std::vector<Value *> values;
+    for (size_t i = 0; i < arrayLiteralNode.values.size(); i++) {
+      Value *value =
+          codegenExpression(*arrayLiteralNode.values[i], context, module,
+                            currentFunction, symbolTable, allGlobalSymbols);
+      values.push_back(value);
+    }
+    std::vector<Constant *> constants;
+    for (const auto &value : values) {
+      if (isa<Constant>(value)) {
+        constants.push_back(static_cast<Constant *>(value));
+      } else {
+        constants.push_back(Constant::getNullValue(value->getType()));
+      }
+    }
+    Value *result = ConstantArray::get(
+        static_cast<llvm::ArrayType *>(llvmArrayType), constants);
+    for (size_t i = 0; i < values.size(); i++) {
+      if (!isa<Constant>(values[i])) {
+        result = currentFunction.irBuilder.CreateInsertValue(
+            result, values[i], {static_cast<unsigned>(i)});
+      }
+    }
+    Value *arrayPointer;
+    if (currentFunction.isMainFunction) { // Main runs once so we can use a
+                                          // global variable.
+      Constant *initializer = isa<Constant>(result)
+                                  ? static_cast<Constant *>(result)
+                                  : Constant::getNullValue(result->getType());
+      GlobalVariable *globalVariable = new GlobalVariable(
+          initializer->getType(), false, GlobalValue::InternalLinkage,
+          initializer, "#array");
+      module.getGlobalList().push_back(globalVariable);
+      arrayPointer = globalVariable;
+    } else { // We have to resort to alloca.
+      arrayPointer = currentFunction.irBuilder.CreateAlloca(llvmArrayType);
+      currentFunction.irBuilder.CreateStore(result, arrayPointer);
+    }
+    // Convert it to a struct with pointer and size.
+    auto structType = StructType::get(
+        context, std::vector<llvm::Type *>{arrayPointer->getType(),
+                                           llvm::Type::getInt64Ty(context)});
+    if (isa<Constant>(arrayPointer)) {
+      return ConstantStruct::get(
+          structType, std::vector<Constant *>{
+                          static_cast<Constant *>(arrayPointer),
+                          ConstantInt::get(llvm::Type::getInt64Ty(context),
+                                           arrayLiteralNode.values.size())});
+    } else {
+      Value *structure = ConstantStruct::get(
+          structType, std::vector<Constant *>{
+                          Constant::getNullValue(arrayPointer->getType()),
+                          ConstantInt::get(llvm::Type::getInt64PtrTy(context),
+                                           arrayLiteralNode.values.size())});
+      structure = currentFunction.irBuilder.CreateInsertValue(
+          structure, arrayPointer, {0});
+      return structure;
+    }
+  }
   case AstNodeType::BINARY_OPERATOR: {
     const BinaryOperatorNode &binaryOperatorNode =
         static_cast<const BinaryOperatorNode &>(expression);
@@ -299,7 +391,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
               "Unsupported type for inequality comparison");
         }
       }
-      // We use a macro here because it is just too 
+      // We use a macro here because it is just too
       case BinaryOperatorType::LESS_THAN: {
         if (isIntegral(primitiveType)) {
           if (isSigned(primitiveType)) {
@@ -488,7 +580,7 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   BasicBlock *mainEntryBlock =
       BasicBlock::Create(llvmContext, "entry", mainFunction);
   FunctionContext mainFunctionContext{mainFunction, mainEntryBlock,
-                                      IRBuilder<>(mainEntryBlock)};
+                                      IRBuilder<>(mainEntryBlock), true};
   const CompilationUnitNode &compilationUnit =
       static_cast<const CompilationUnitNode &>(ast);
   SymbolTable allGlobalSymbols;

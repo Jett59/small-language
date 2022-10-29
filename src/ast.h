@@ -19,6 +19,7 @@ enum class AstNodeType {
   FLOAT_LITERAL,
   STRING_LITERAL,
   BOOL_LITERAL,
+  ARRAY_LITERAL,
   FUNCTION,
   BINARY_OPERATOR,
   NIL,
@@ -29,6 +30,7 @@ enum class AstNodeType {
   RETURN,
   EXTERNAL,
   DEREFERENCE,
+  SUBSCRIPT,
 };
 
 // Forward-declare to allow for use in the symbol table.
@@ -140,6 +142,17 @@ public:
   bool value;
   BooleanLiteralNode(bool value)
       : AstNode(AstNodeType::BOOL_LITERAL), value(value) {}
+
+  std::string toString() const override;
+
+  void assignType(SymbolTable &symbolTable,
+                  const SymbolTable &allGlobalSymbols) override;
+};
+class ArrayLiteralNode : public AstNode {
+public:
+  std::vector<std::unique_ptr<AstNode>> values;
+  ArrayLiteralNode(std::vector<std::unique_ptr<AstNode>> values)
+      : AstNode(AstNodeType::ARRAY_LITERAL), values(std::move(values)) {}
 
   std::string toString() const override;
 
@@ -334,6 +347,19 @@ public:
   std::unique_ptr<AstNode> value;
   DereferenceNode(std::unique_ptr<AstNode> value)
       : AstNode(AstNodeType::DEREFERENCE), value(std::move(value)) {}
+
+  std::string toString() const override;
+
+  void assignType(SymbolTable &symbolTable,
+                  const SymbolTable &allGlobalSymbols) override;
+};
+class SubscriptNode : public AstNode {
+public:
+  std::unique_ptr<AstNode> value;
+  std::unique_ptr<AstNode> index;
+  SubscriptNode(std::unique_ptr<AstNode> value, std::unique_ptr<AstNode> index)
+      : AstNode(AstNodeType::SUBSCRIPT), value(std::move(value)),
+        index(std::move(index)) {}
 
   std::string toString() const override;
 

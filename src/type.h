@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace sl {
-enum class TypeType { PRIMITIVE, REFERENCE, FUNCTION, ARRAY };
+enum class TypeType { PRIMITIVE, REFERENCE, FUNCTION, ARRAY, STRUCT };
 class Type {
 public:
   TypeType type;

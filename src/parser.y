@@ -95,9 +95,7 @@ static std::unique_ptr<NodeClass> makeAstNode(sl::location &location, ArgumentTy
 %left "*" "/" "%"
 %left "&" "|" "^" "~"
 %left "as"
-
-/* For function calls */
-%left "("
+%left "(" "["
 
 %%
 
@@ -182,6 +180,9 @@ expression:
 | "false" {
     $$ = makeAstNode<BooleanLiteralNode>(@1, false);
 }
+| "[" expression-list "]" {
+    $$ = makeAstNode<ArrayLiteralNode>(@1, $2);
+}
 | expression "as" type {
     $$ = makeAstNode<CastNode>(@2, $1, $3);
 }
@@ -193,6 +194,9 @@ expression:
 }
 | expression "(" expression-list ")" {
     $$ = makeAstNode<CallNode>(@1, $1, $3);
+}
+| expression "[" expression "]" {
+    $$ = makeAstNode<SubscriptNode>(@1, $1, $3);
 }
 | expression "+" expression {
     $$ = makeAstNode<BinaryOperatorNode>(@2, BinaryOperatorType::ADD, $1, $3);
@@ -307,6 +311,9 @@ type:
     }
     | "(" type-list ")" "->" type {
         $$ = make_unique<FunctionTypeNode>($2, $5);
+    }
+    | "[" type "]" {
+        $$ = make_unique<ArrayType>($2);
     }
 
 %%

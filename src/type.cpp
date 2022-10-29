@@ -19,7 +19,9 @@ std::string FunctionTypeNode::toString() const {
   result += ")->" + returnType->toString();
   return result;
 }
-std::string ArrayType::toString() const { return type->toString() + "[]"; }
+std::string ArrayType::toString() const {
+  return "["s + type->toString() + "]"s;
+}
 
 std::unique_ptr<Type> PrimitiveTypeNode::clone() const {
   return std::make_unique<PrimitiveTypeNode>(primitiveType);
