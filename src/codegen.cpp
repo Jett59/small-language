@@ -93,6 +93,24 @@ static const Type &removeReference(const Type &type) {
 
 using SymbolTable = std::map<std::string, Value *>;
 
+static void createAssert(FunctionContext &function, Value *condition,
+                         const std::string &message, Module &module,
+                         LLVMContext &context) {
+  BasicBlock *assertBlock =
+      BasicBlock::Create(context, "assert", function.function);
+  BasicBlock *continueBlock =
+      BasicBlock::Create(context, "assert.continue", function.function);
+  function.irBuilder.CreateCondBr(condition, continueBlock, assertBlock);
+  function.irBuilder.SetInsertPoint(assertBlock);
+  CallInst *panicCall = function.irBuilder.CreateCall(
+      module.getFunction("panic"),
+      std::vector<Value *>{function.irBuilder.CreateGlobalStringPtr(message)});
+  panicCall->setDoesNotReturn();
+  panicCall->setTailCall();
+  function.irBuilder.CreateUnreachable();
+  function.irBuilder.SetInsertPoint(continueBlock);
+}
+
 static void codegenStatement(const AstNode &statement, LLVMContext &context,
                              Module &module, FunctionContext &function,
                              SymbolTable &symbolTable,
@@ -113,13 +131,14 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     Value *index =
         codegenExpression(*subscript.index, context, module, currentFunction,
                           symbolTable, allGlobalSymbols);
-    // array is a pointer to an LLVM array type. This means that the GEP
-    // instruction should have an index of 0 for the first index, and the index
-    // of the subscript for the second index.
-    std::vector<Value *> indices = {
-        ConstantInt::get(llvm::Type::getInt32Ty(context), 0), index};
-    return currentFunction.irBuilder.CreateGEP(
-        array->getType()->getPointerElementType(), array, indices);
+    Value *size = currentFunction.irBuilder.CreateExtractValue(array, 1);
+    createAssert(currentFunction,
+                 currentFunction.irBuilder.CreateICmpULT(index, size),
+                 "Array index out of bounds", module, context);
+    Value *pointer = currentFunction.irBuilder.CreateExtractValue(array, 0);
+    return currentFunction.irBuilder.CreateInBoundsGEP(
+        pointer->getType()->getPointerElementType(), pointer,
+        std::vector<Value *>{index});
   }
   case AstNodeType::DEREFERENCE: {
     const DereferenceNode &dereference =
@@ -210,6 +229,9 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
     Value *value =
         codegenExpression(*castNode.value, context, module, currentFunction,
                           symbolTable, allGlobalSymbols);
+    if (castNode.valueType->get()->equals(**castNode.value->valueType)) {
+      return value;
+    }
     bool isResultValueIntegral = isIntegral(**castNode.valueType);
     bool isResultValueFloat = isFloat(**castNode.valueType);
     bool isOriginalValueIntegral = value->getType()->isIntegerTy();
@@ -297,6 +319,7 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
       }
     }
     Value *arrayPointer;
+    llvm::Type *arrayPointerType = llvmElementType->getPointerTo();
     if (currentFunction.isMainFunction) { // Main runs once so we can use a
                                           // global variable.
       Constant *initializer = isa<Constant>(result)
@@ -306,10 +329,13 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
           initializer->getType(), false, GlobalValue::InternalLinkage,
           initializer, "#array");
       module.getGlobalList().push_back(globalVariable);
-      arrayPointer = globalVariable;
+      arrayPointer = ConstantExpr::getBitCast(globalVariable, arrayPointerType);
     } else { // We have to resort to alloca.
-      arrayPointer = currentFunction.irBuilder.CreateAlloca(llvmArrayType);
-      currentFunction.irBuilder.CreateStore(result, arrayPointer);
+      Value *alloca = currentFunction.irBuilder.CreateAlloca(arrayPointerType,
+                                                             nullptr, "array");
+      currentFunction.irBuilder.CreateStore(result, alloca);
+      arrayPointer = currentFunction.irBuilder.CreateBitCast(
+          alloca, arrayPointerType, "#array.pointer");
     }
     // Convert it to a struct with pointer and size.
     auto structType = StructType::get(
@@ -570,7 +596,35 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   InitializeAllAsmPrinters();
   InitializeAllAsmParsers();
   LLVMContext llvmContext;
+  llvmContext.setOpaquePointers(false);
   Module module("sl", llvmContext);
+  std::string targetTriple;
+  if (initialTargetTriple == "") {
+    targetTriple = sys::getDefaultTargetTriple();
+  } else {
+    targetTriple = initialTargetTriple;
+  }
+  std::string err;
+  auto target = TargetRegistry::lookupTarget(targetTriple, err);
+  if (!target) {
+    throw std::runtime_error(err);
+  }
+  auto cpu = "generic";
+  auto features = "";
+  TargetOptions opt;
+  auto rm = Optional<Reloc::Model>();
+  auto targetMachine =
+      target->createTargetMachine(targetTriple, cpu, features, opt, rm);
+  if (!targetMachine) {
+    throw std::runtime_error("Could not allocate target machine");
+  }
+  module.setTargetTriple(targetTriple);
+  module.setDataLayout(targetMachine->createDataLayout());
+  // Needed for assertions.
+  module.getOrInsertFunction(
+      "panic",
+      FunctionType::get(llvm::Type::getVoidTy(llvmContext),
+                        {llvm::Type::getInt8PtrTy(llvmContext)}, false));
   if (ast.type != AstNodeType::COMPILATION_UNIT) {
     throw std::runtime_error("Expected compilation unit");
   }
@@ -609,30 +663,9 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
   mainFunctionContext.irBuilder.CreateRet(
       ConstantInt::get(llvmContext, APInt(32, 0)));
   if (verifyModule(module, &errs())) {
+    module.print(errs(), nullptr);
     throw std::runtime_error("Module verification failed");
   }
-  std::string targetTriple;
-  if (initialTargetTriple == "") {
-    targetTriple = sys::getDefaultTargetTriple();
-  } else {
-    targetTriple = initialTargetTriple;
-  }
-  std::string err;
-  auto target = TargetRegistry::lookupTarget(targetTriple, err);
-  if (!target) {
-    throw std::runtime_error(err);
-  }
-  auto cpu = "generic";
-  auto features = "";
-  TargetOptions opt;
-  auto rm = Optional<Reloc::Model>();
-  auto targetMachine =
-      target->createTargetMachine(targetTriple, cpu, features, opt, rm);
-  if (!targetMachine) {
-    throw std::runtime_error("Could not allocate target machine");
-  }
-  module.setTargetTriple(targetTriple);
-  module.setDataLayout(targetMachine->createDataLayout());
   LoopAnalysisManager loopAnalysisManager;
   FunctionAnalysisManager functionAnalysisManager;
   CGSCCAnalysisManager cGSCCAnalysisManager;
@@ -646,6 +679,7 @@ void codegen(const AstNode &ast, const std::string &initialTargetTriple,
                                    cGSCCAnalysisManager, moduleAnalysisManager);
   ModulePassManager modulePassManager =
       passBuilder.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
+  module.print(errs(), nullptr);
   modulePassManager.run(module, moduleAnalysisManager);
   if (printIr) {
     module.print(errs(), nullptr);

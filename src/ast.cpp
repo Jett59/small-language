@@ -480,28 +480,22 @@ void SubscriptNode::assignType(SymbolTable &symbolTable,
   if (!value->valueType) {
     throw SlException(line, column, "Subscript expression has no type");
   }
-  if (value->valueType->get()->type != TypeType::REFERENCE) {
-    throw SlException(line, column, "Subscript expression is not a reference");
-  }
-  const auto &referenceType =
-      static_cast<const ReferenceTypeNode &>(**value->valueType);
-  if (referenceType.type->type != TypeType::ARRAY) {
+  decayReferenceType(value);
+  const auto &valueType = *value->valueType;
+  if (valueType->type != TypeType::ARRAY) {
     throw SlException(line, column, "Subscript expression is not an array");
   }
-  const auto &arrayType = static_cast<const ArrayType &>(*referenceType.type);
+  const auto &arrayType = static_cast<const ArrayType &>(*valueType);
   index->assignType(symbolTable, allGlobalSymbols);
   if (!index->valueType) {
     throw SlException(line, column, "Subscript index has no type");
   }
   decayReferenceType(index);
   const auto &indexType = *index->valueType;
-  staticlyConvert(index, *indexType, PrimitiveTypeNode{PrimitiveType::U64});
-  if (indexType->type != TypeType::PRIMITIVE ||
-      static_cast<const PrimitiveTypeNode &>(*indexType).primitiveType !=
-          PrimitiveType::U64) {
-    throw SlException(line, column, "Subscript index is not a u64");
+  if (!isIntegral(*indexType)) {
+    throw SlException(line, column, "Subscript index is not an integer");
   }
-  valueType = std::make_unique<ReferenceTypeNode>(arrayType.type->clone(),
-                                                  referenceType.constant);
+  this->valueType =
+      std::make_unique<ReferenceTypeNode>(arrayType.type->clone(), false);
 }
 } // namespace sl
