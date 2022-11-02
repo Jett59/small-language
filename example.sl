@@ -1,4 +1,6 @@
-let getInt = extern getInt: () -> i32;
-let array = [1, 2, 3, 4, 5, 6] as [i32];
-let exit = extern exit: (i32) -> nil;
-exit(array[getInt() as u64]);
+let exit = extern exit: (i32)-> nil;
+let getInt = extern getInt: ()-> i32;
+let x = getInt();
+let y = getInt();
+exit(x * y + x / y - (x + y) / x + x);
+

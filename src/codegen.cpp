@@ -1,4 +1,5 @@
 #include "codegen.h"
+#include "stringHelper.h"
 #include <iostream>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
@@ -286,6 +287,17 @@ static Value *codegenExpression(const AstNode &expression, LLVMContext &context,
         static_cast<const BooleanLiteralNode &>(expression);
     return ConstantInt::get(getLlvmType(**expression.valueType, context),
                             boolLiteralNode.value);
+  }
+  case AstNodeType::STRING_LITERAL: {
+    const auto &stringLiteralNode =
+        static_cast<const StringLiteralNode &>(expression);
+    std::string value = translateEscapes(stringLiteralNode.value);
+    Constant *stringPointer =
+        currentFunction.irBuilder.CreateGlobalStringPtr(value);
+    return ConstantStruct::get(
+        static_cast<StructType *>(getLlvmType(**expression.valueType, context)),
+        {stringPointer,
+         ConstantInt::get(llvm::Type::getInt64Ty(context), value.size())});
   }
   case AstNodeType::ARRAY_LITERAL: {
     const auto &arrayLiteralNode =
